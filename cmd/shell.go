@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -20,7 +21,7 @@ import (
 // shellCmd represents the shell command
 var shellCmd = &cobra.Command{
 	Use:   "shell",
-	Short: "Execute a shell in the canon environment (default.)",
+	Short: "Execute a shell in the canon environment (default)",
 	Long: `Exectute a shell in the canon environment.
 	This is executed by default if no other command is given.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,13 +62,25 @@ func shell() (err error) {
 	hostCfg := &container.HostConfig{AutoRemove: true}
 	netCfg := &network.NetworkingConfig{}
 
-	platform := &v1.Platform{OS: "linux", Architecture: "amd64"}
+	platform := &v1.Platform{OS: "linux", Architecture: activeProfile.Arch}
 
 	name := "canon-temp"
 
 	resp, err := cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, platform, name)
 	if err != nil {
-		return err
+		// if we don't have the image or have the wrong architecture, we have to pull it
+		if strings.Contains(err.Error(), "does not match the specified platform") || strings.Contains(err.Error(), "No such image") {
+			err2 := update(imageDef{image: cfg.Image, platform: platform.OS + "/" + platform.Architecture})
+			if err2 != nil {
+				return err2
+			}
+			resp, err = cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, platform, name)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	for _, warn := range resp.Warnings {

@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -23,21 +25,21 @@ type Profile struct {
 	Netrc            bool
 	User             string
 	Group            string
-	HostPath         string
+	Path             string
 	UpdateInterval   time.Duration
 	UpdatePersistent bool
 }
 
 var activeProfile = &Profile{
 	Name:             "default",
-	Image:            "ghcr.io/viamrobotics/canon:amd64",
-	Arch:             "amd64",
+	Image:            "ghcr.io/viamrobotics/canon:latest",
+	Arch:             runtime.GOARCH,
 	Persistent:       false,
 	Ssh:              true,
 	Netrc:            true,
 	User:             "testbot",
 	Group:            "testbot",
-	HostPath:         "",
+	Path:             "/",
 	UpdateInterval:   time.Hour * 168,
 	UpdatePersistent: true,
 }
@@ -46,17 +48,19 @@ var activeProfile = &Profile{
 var rootCmd = &cobra.Command{
 	Use:          "canon",
 	Short:        "A tool for running dev environments using docker containers.",
-	Long:         `A tool for running dev environements using docker containers.`,
+	Long:         `A tool for running dev environments using docker containers.`,
 	SilenceUsage: true,
 }
+
+// Global so it can be referenced in update
+var mergedCfg map[string]interface{}
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-
 	// load a local/project specific config if found
 	cfg := make(map[string]interface{})
-	repoCfgFile, err := findRepoConfig()
+	repoCfgFile, err := findProjectConfig()
 	if err == nil {
 		cfg, err = mergeInConfig(cfg, repoCfgFile)
 		cobra.CheckErr(err)
@@ -65,32 +69,36 @@ func Execute() {
 	// override with settings from user's default or cli specified config
 	home, err := os.UserHomeDir()
 	cobra.CheckErr(err)
+
 	userCfgPath := home + "/.config/canon.yaml"
-	earlyFlags1 := &pflag.FlagSet{ParseErrorsWhitelist: pflag.ParseErrorsWhitelist{UnknownFlags: true}}
-	earlyFlags1.StringVar(&userCfgPath, "config", userCfgPath, "config file")
-	cobra.CheckErr(earlyFlags1.Parse(os.Args[1:]))
-	cfg, err = mergeInConfig(cfg, userCfgPath)
+	cfgPath := userCfgPath
+
+	if cfgArg := getEarlyArg("config"); cfgArg != "" {
+		cfgPath = cfgArg
+	}
+	cfg, err = mergeInConfig(cfg, cfgPath)
 	cobra.CheckErr(err)
+	mergedCfg = cfg
 
 	// determine the default profile from configs
-	profileName, err := getDefaultProfile(cfg)
+	defProfileName, err := getDefaultProfile(cfg)
 	cobra.CheckErr(err)
+	profileName := defProfileName
 
 	// override with cli specified profile
-	earlyFlags2 := &pflag.FlagSet{ParseErrorsWhitelist: pflag.ParseErrorsWhitelist{UnknownFlags: true}}
-	earlyFlags2.StringVar(&profileName, "profile", profileName, "profile name")
-	cobra.CheckErr(earlyFlags2.Parse(os.Args[1:]))
-
+	if profArg := getEarlyArg("profile"); profArg != "" {
+		profileName = profArg
+	}
 	// find and load profile
 	p, ok := cfg[profileName]
 	if !ok {
 		cobra.CheckErr(fmt.Errorf("no profile named %s", profileName))
 	}
 	mapstructure.Decode(p, activeProfile)
+	activeProfile.Name = profileName
 
-	rootCmd.PersistentFlags().SortFlags = true
-	rootCmd.PersistentFlags().AddFlagSet(earlyFlags1)
-	rootCmd.PersistentFlags().AddFlagSet(earlyFlags2)
+	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", userCfgPath, "config file")
+	rootCmd.PersistentFlags().StringVar(&profileName, "profile", defProfileName, "profile name")
 	rootCmd.PersistentFlags().StringVar(&activeProfile.Image, "image", activeProfile.Image, "docker image name")
 	rootCmd.PersistentFlags().StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (amd64 or arm64)")
 	rootCmd.PersistentFlags().BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "foward ssh config/agent to the canon environment")
@@ -102,10 +110,10 @@ func Execute() {
 		rootCmd.SetArgs(args)
 	}
 
-	cobra.CheckErr(rootCmd.Execute())
+	rootCmd.Execute()
 }
 
-func findRepoConfig() (path string, err error) {
+func findProjectConfig() (path string, err error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -132,7 +140,7 @@ func mergeInConfig(cfg map[string]interface{}, path string) (map[string]interfac
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("MERGING ", path)
+	//fmt.Println("MERGING ", path)
 	err = yaml.Unmarshal(cfgData, cfgNew)
 	if err != nil {
 		return nil, err
@@ -176,7 +184,7 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 		if !ok || prof == nil {
 			continue
 		}
-		path, ok := prof["hostpath"]
+		path, ok := prof["path"]
 		if !ok {
 			continue
 		}
@@ -209,4 +217,15 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+func getEarlyArg(argName string) string {
+	for i, arg := range os.Args {
+		if strings.HasPrefix(arg, "--"+argName) {
+			if len(os.Args) >= i {
+				return os.Args[i+1]
+			}
+		}
+	}
+	return ""
 }
