@@ -1,6 +1,3 @@
-/*
-Copyright © 2023 James Otting <james@viam.com>
-*/
 package cmd
 
 import (
@@ -58,7 +55,7 @@ func shell() (err error) {
 		AttachStdout: true,
 		AttachStderr: true,
 		Tty:          true,
-		Image:        "ghcr.io/viamrobotics/canon:amd64",
+		Image:        activeProfile.Image,
 		Cmd:          []string{"bash"},
 	}
 	hostCfg := &container.HostConfig{AutoRemove: true}
@@ -74,7 +71,7 @@ func shell() (err error) {
 	}
 
 	for _, warn := range resp.Warnings {
-		fmt.Printf("Warning during container creation: %s", warn)
+		fmt.Fprintf(os.Stderr, "Warning during container creation: %s\n", warn)
 	}
 
 	containerID := resp.ID
@@ -101,9 +98,8 @@ func shell() (err error) {
 		err = multierr.Combine(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
 	}()
 
-
-	outErr := make(chan(error))
-	inErr := make(chan(error))
+	outErr := make(chan (error))
+	inErr := make(chan (error))
 	go func() {
 		_, err := io.Copy(os.Stdout, hijack.Reader)
 		outErr <- err

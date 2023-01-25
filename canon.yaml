@@ -1,0 +1,5 @@
+---
+profile1:
+ ssh: False
+ image: "foobar"
+ user: "papasmurf"
