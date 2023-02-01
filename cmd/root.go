@@ -40,15 +40,17 @@ var activeProfile = &Profile{
 	User:             "testbot",
 	Group:            "testbot",
 	Path:             "/",
-	UpdateInterval:   time.Hour * 168,
+	UpdateInterval:   time.Hour * 24,
 	UpdatePersistent: true,
 }
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:          "canon",
-	Short:        "A tool for running dev environments using docker containers.",
-	Long:         `A tool for running dev environments using docker containers.`,
+	Use:   "canon",
+	Short: "A tool for running dev environments using docker containers.",
+	Long:  "A tool for running dev environments using docker containers. It will mount the current directory inside the docker " +
+	"along with (optionally) an SSH agent socket and .netrc file. To do this, it remaps the UID/GID of a given user and group " +
+	"within the docker image to match that of the external (normal) user.",
 	SilenceUsage: true,
 }
 
@@ -62,7 +64,7 @@ func Execute() {
 	cfg := make(map[string]interface{})
 	repoCfgFile, err := findProjectConfig()
 	if err == nil {
-		cfg, err = mergeInConfig(cfg, repoCfgFile)
+		cfg, err = mergeInConfig(cfg, repoCfgFile, true)
 		cobra.CheckErr(err)
 	}
 
@@ -76,7 +78,7 @@ func Execute() {
 	if cfgArg := getEarlyArg("config"); cfgArg != "" {
 		cfgPath = cfgArg
 	}
-	cfg, err = mergeInConfig(cfg, cfgPath)
+	cfg, err = mergeInConfig(cfg, cfgPath, false)
 	cobra.CheckErr(err)
 	mergedCfg = cfg
 
@@ -101,10 +103,13 @@ func Execute() {
 	rootCmd.PersistentFlags().StringVar(&profileName, "profile", defProfileName, "profile name")
 	rootCmd.PersistentFlags().StringVar(&activeProfile.Image, "image", activeProfile.Image, "docker image name")
 	rootCmd.PersistentFlags().StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (amd64 or arm64)")
-	rootCmd.PersistentFlags().BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "foward ssh config/agent to the canon environment")
+	rootCmd.PersistentFlags().StringVar(&activeProfile.User, "user", activeProfile.User, "user to map to inside the canon environment")
+	rootCmd.PersistentFlags().StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
+	rootCmd.PersistentFlags().BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
+	rootCmd.PersistentFlags().BoolVar(&activeProfile.Netrc, "netrc", activeProfile.Netrc, "mount ~/.netrc (read-only) in the canon environment")
 
+	// default to shell subcommand if no subcommand given
 	cmd, _, err := rootCmd.Find(os.Args[1:])
-	// default cmd if no cmd is given
 	if err == nil && cmd.Use == rootCmd.Use && cmd.Flags().Parse(os.Args[1:]) != pflag.ErrHelp {
 		args := append([]string{shellCmd.Use}, os.Args[1:]...)
 		rootCmd.SetArgs(args)
@@ -114,7 +119,8 @@ func Execute() {
 }
 
 func findProjectConfig() (path string, err error) {
-	cwd, err := os.Getwd()
+	var cwd string
+	cwd, err = os.Getwd()
 	if err != nil {
 		return
 	}
@@ -134,19 +140,32 @@ func findProjectConfig() (path string, err error) {
 	}
 }
 
-func mergeInConfig(cfg map[string]interface{}, path string) (map[string]interface{}, error) {
+func mergeInConfig(cfg map[string]interface{}, path string, setPath bool) (map[string]interface{}, error) {
 	cfgNew := make(map[string]interface{})
 	cfgData, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	//fmt.Println("MERGING ", path)
 	err = yaml.Unmarshal(cfgData, cfgNew)
 	if err != nil {
 		return nil, err
 	}
+
+	if setPath {
+		for _, v := range cfgNew {
+			prof, ok := v.(map[string]interface{})
+			if ok {
+				_, ok = prof["path"]
+				if !ok {
+					prof["path"] = filepath.Dir(path)
+				}
+			}
+		}
+	}
+
 	outCfg := mergeMaps(cfg, cfgNew)
 	return outCfg, nil
+
 }
 
 func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
@@ -205,7 +224,7 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 			if hostpath == string(os.PathSeparator) {
 				break
 			}
-			hostpath = filepath.Dir(hostpath)
+			wd = filepath.Dir(wd)
 		}
 	}
 
@@ -216,6 +235,7 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 			return pName, nil
 		}
 	}
+
 	return "", nil
 }
 

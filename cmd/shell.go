@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/opencontainers/image-spec/specs-go/v1"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.uber.org/multierr"
 
 	"github.com/moby/term"
@@ -29,18 +32,10 @@ var shellCmd = &cobra.Command{
 	},
 }
 
+var canonMountPoint = "/host"
+
 func init() {
 	rootCmd.AddCommand(shellCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// shellCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// shellCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 func shell() (err error) {
@@ -59,12 +54,97 @@ func shell() (err error) {
 		Image:        activeProfile.Image,
 		Cmd:          []string{"bash"},
 	}
-	hostCfg := &container.HostConfig{AutoRemove: true}
+	hostCfg := &container.HostConfig{}
 	netCfg := &network.NetworkingConfig{}
-
 	platform := &v1.Platform{OS: "linux", Architecture: activeProfile.Arch}
+	name := "canon-"+activeProfile.Name
 
-	name := "canon-temp"
+	if !activeProfile.Persistent {
+		hostCfg.AutoRemove = true
+	}
+
+	if activeProfile.Ssh {
+		if runtime.GOOS == "darwin" {
+			// Docker has magic paths for this on Mac
+			darwinSock := "/run/host-services/ssh-auth.sock"
+			mnt := mount.Mount{
+				Type:     "bind",
+				Source:   darwinSock,
+				Target:   darwinSock,
+			}
+			hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+			cfg.Env = append(cfg.Env, "SSH_AUTH_SOCK="+darwinSock)
+		} else {
+			sock, ok := os.LookupEnv("SSH_AUTH_SOCK")
+			if ok {
+					mnt := mount.Mount{
+					Type:     "bind",
+					Source:   sock,
+					Target:   sock,
+				}
+				hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+				cfg.Env = append(cfg.Env, "SSH_AUTH_SOCK="+sock)
+			}
+		}
+
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		userSSHDir := filepath.Join(home, ".ssh")
+		// TODO check inside the container for the actual home directory
+		canonSSHDir := "/home/" + activeProfile.User + "/.ssh"
+
+		mnt := mount.Mount{
+			Type:     "bind",
+			Source:   userSSHDir,
+			Target:   canonSSHDir,
+			ReadOnly: true,
+		}
+		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+	}
+
+	if activeProfile.Netrc {
+		home, err := os.UserHomeDir()
+		cobra.CheckErr(err)
+		userNetRC := filepath.Join(home, ".netrc")
+		canonNetRC := "/home/" + activeProfile.User + "/.netrc"
+		mnt := mount.Mount{
+			Type:     "bind",
+			Source:   userNetRC,
+			Target:   canonNetRC,
+			ReadOnly: true,
+		}
+		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+	}
+
+	mnt := mount.Mount{
+		Type:     "bind",
+		Source:   activeProfile.Path,
+		Target:   canonMountPoint,
+	}
+	hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+
+	// start in the right workdir
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	if !strings.HasPrefix(cwd, activeProfile.Path) {
+		return fmt.Errorf("current directory is not within the current profile's path")
+	}
+	if activeProfile.Path == string(os.PathSeparator) {
+		fmt.Fprintf(os.Stderr,
+			"WARNING: profile path is root (%s) so mounting entire host system to %s\n",
+			string(os.PathSeparator),
+			canonMountPoint,
+		)
+	}else{
+		cwd = strings.TrimPrefix(cwd, activeProfile.Path)
+	}
+	cfg.WorkingDir = canonMountPoint + cwd
 
 	resp, err := cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, platform, name)
 	if err != nil {
