@@ -25,12 +25,15 @@ if [[ $? -eq 0 ]]; then
 else
 	useradd --non-unique --uid $CANON_UID --gid $CANON_GID $CANON_USER >/dev/null 2>&1
 fi
+if ! grep -qs $CANON_USER /etc/sudoers; then
+  echo "$CANON_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+fi
 
 if [[ -e /run/host-services/ssh-auth.sock ]]; then
   chown $CANON_USER:$CANON_GROUP /run/host-services/ssh-auth.sock
 fi
 
-if [[ -n "${SSH_AUTH_SOCK}" ]]; then
+if [[ -n "${CANON_SSH}" ]]; then
 cat >> "$(getent passwd $CANON_USER | cut -d: -f6)/.bashrc" <<-EOS
 # Canon SSH Setup
 ssh-add -l >/dev/null
@@ -52,4 +55,8 @@ fi
 EOS
 fi
 
-sudo --preserve-env=SSH_AUTH_SOCK -u $CANON_USER bash -lc 'exec "$@"' "$0" "$0" "$@"
+SHUTDOWN=0
+trap 'SHUTDOWN=1' SIGTERM
+until [[ $SHUTDOWN -gt 0 ]]; do
+  sleep 1
+done
