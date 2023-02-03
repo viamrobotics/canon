@@ -29,7 +29,7 @@ var shellCmd = &cobra.Command{
 	Long: `Exectute a shell in the canon environment.
 	This is executed by default if no other command is given.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return shell()
+		return shell(args)
 	},
 }
 
@@ -42,7 +42,7 @@ func init() {
 	rootCmd.AddCommand(shellCmd)
 }
 
-func shell() (err error) {
+func shell(args []string) (err error) {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -56,7 +56,6 @@ func shell() (err error) {
 		AttachStderr: true,
 		Tty:          true,
 		Image:        activeProfile.Image,
-		Cmd:          []string{"bash"},
 	}
 	hostCfg := &container.HostConfig{}
 	netCfg := &network.NetworkingConfig{}
@@ -155,7 +154,8 @@ func shell() (err error) {
 	canonEntryPoint = strings.Replace(canonEntryPoint, "__CANON_GROUP__", activeProfile.Group, -1)
 	canonEntryPoint = strings.Replace(canonEntryPoint, "__CANON_UID__", fmt.Sprint(os.Getuid()), -1)
 	canonEntryPoint = strings.Replace(canonEntryPoint, "__CANON_GID__", fmt.Sprint(os.Getgid()), -1)
-	cfg.Entrypoint = []string{"bash", "-c", canonEntryPoint, cfg.Cmd[0]}
+	cfg.Entrypoint = []string{"bash", "-c", canonEntryPoint}
+	cfg.Cmd = args
 
 	resp, err := cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, platform, name)
 	if err != nil {
@@ -238,14 +238,15 @@ func shell() (err error) {
 		}
 	}
 
-	// wait for shutdown. won't apply to persistent containers
-	statusCh, errCh := cli.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
-	select {
-	case err := <-errCh:
-		if err != nil {
-			return err
+	if !activeProfile.Persistent {
+		statusCh, errCh := cli.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+		case <-statusCh:
 		}
-	case <-statusCh:
 	}
 
 	return nil

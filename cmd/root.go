@@ -52,6 +52,7 @@ var rootCmd = &cobra.Command{
 	"along with (optionally) an SSH agent socket and .netrc file. To do this, it remaps the UID/GID of a given user and group " +
 	"within the docker image to match that of the external (normal) user.",
 	SilenceUsage: true,
+	Args: cobra.ArbitraryArgs,
 }
 
 // Global so it can be referenced in update
@@ -75,7 +76,7 @@ func Execute() {
 	userCfgPath := home + "/.config/canon.yaml"
 	cfgPath := userCfgPath
 
-	if cfgArg := getEarlyArg("config"); cfgArg != "" {
+	if cfgArg := getEarlyFlag("config"); cfgArg != "" {
 		cfgPath = cfgArg
 	}
 	cfg, err = mergeInConfig(cfg, cfgPath, false)
@@ -88,7 +89,7 @@ func Execute() {
 	profileName := defProfileName
 
 	// override with cli specified profile
-	if profArg := getEarlyArg("profile"); profArg != "" {
+	if profArg := getEarlyFlag("profile"); profArg != "" {
 		profileName = profArg
 	}
 	// find and load profile
@@ -239,9 +240,9 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 	return "", nil
 }
 
-func getEarlyArg(argName string) string {
+func getEarlyFlag(flagName string) string {
 	for i, arg := range os.Args {
-		if strings.HasPrefix(arg, "--"+argName) {
+		if strings.HasPrefix(arg, "--"+flagName) {
 			if len(os.Args) >= i {
 				return os.Args[i+1]
 			}
