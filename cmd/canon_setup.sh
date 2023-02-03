@@ -57,6 +57,10 @@ fi
 
 SHUTDOWN=0
 trap 'SHUTDOWN=1' SIGTERM
+
+# signals go that setup steps are complete and it's safe to call exec for the real commands
+echo "CANON_READY"
+
 until [[ $SHUTDOWN -gt 0 ]]; do
   sleep 1
 done

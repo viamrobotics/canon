@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
 	"fmt"
@@ -40,7 +41,7 @@ func init() {
 	rootCmd.AddCommand(shellCmd)
 }
 
-//go:embed entrypoint.sh
+//go:embed canon_setup.sh
 var canonSetupScript string
 
 var canonMountPoint = "/host"
@@ -70,9 +71,14 @@ func shell(args []string) (err error) {
 		return err
 	}
 
+	wd, err := getWorkingDir(activeProfile)
+	if err != nil {
+		return err
+	}
+
 	execCfg := types.ExecConfig{
-		User: fmt.Sprintf("%s:%s", activeProfile.User, activeProfile.Group),
-		WorkingDir: canonMountPoint,
+		User:         fmt.Sprintf("%s:%s", activeProfile.User, activeProfile.Group),
+		WorkingDir:   wd,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -92,10 +98,14 @@ func shell(args []string) (err error) {
 	}
 	defer hijack.Close()
 
-	// keep the TTY the same size in the container as on the host
+	//keep the TTY the same size in the container as on the host
 	err = resizeTty(ctx, cli, execID)
 	if err != nil {
-		return err
+		// for very fast commands, the resize may happen too early or too late
+		if !strings.Contains(err.Error(), "cannot resize a stopped container") &&
+		   !strings.Contains(err.Error(), "no such exec") {
+			return err
+		}
 	}
 	monitorTtySize(ctx, cli, execID)
 
@@ -197,6 +207,7 @@ func stopContainer(ctx context.Context, cli *client.Client, containerID string) 
 func startContainer(ctx context.Context, cli *client.Client, profile *Profile, sshSock string) (string, error) {
 	cfg := &container.Config{
 		Image:        profile.Image,
+		AttachStdout: true,
 	}
 	if profile.Ssh {
 		cfg.Env = []string{"CANON_SSH=true"}
@@ -246,32 +257,20 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 	}
 
-	mnt := mount.Mount{
-		Type:     "bind",
-		Source:   profile.Path,
-		Target:   canonMountPoint,
-	}
-	hostCfg.Mounts = append(hostCfg.Mounts, mnt)
-
-	// start in the right workdir
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	if !strings.HasPrefix(cwd, profile.Path) {
-		return "", fmt.Errorf("current directory is not within the current profile's path")
-	}
 	if profile.Path == string(os.PathSeparator) {
 		fmt.Fprintf(os.Stderr,
 			"WARNING: profile path is root (%s) so mounting entire host system to %s\n",
 			string(os.PathSeparator),
 			canonMountPoint,
 		)
-	}else{
-		cwd = strings.TrimPrefix(cwd, profile.Path)
 	}
-	cfg.WorkingDir = canonMountPoint + cwd
+
+	mnt := mount.Mount{
+		Type:     "bind",
+		Source:   profile.Path,
+		Target:   canonMountPoint,
+	}
+	hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 
 	// fill out the entrypoint template
 	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_USER__", profile.User, -1)
@@ -307,5 +306,31 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	fmt.Printf("Container ID: %s\n", containerID)
 
 	err = cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
-	return containerID, err
+	if err != nil {
+		return containerID, err
+	}
+
+	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true})
+	defer hijack.Close()
+
+    scanner := bufio.NewScanner(hijack.Reader)
+    for scanner.Scan() {
+        if strings.Contains(scanner.Text(), "CANON_READY") {
+            break
+        }
+    }
+    return containerID, scanner.Err()
+}
+
+func getWorkingDir(profile *Profile) (string, error) {
+	// start in the right workdir
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(cwd, profile.Path) {
+		return "", fmt.Errorf("current directory is not within the current profile's path")
+	}
+	cwd = strings.TrimPrefix(cwd, profile.Path)
+	return filepath.Join(canonMountPoint, cwd), nil
 }
