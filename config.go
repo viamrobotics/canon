@@ -1,8 +1,12 @@
-package cmd
+/* A tool for running dev environments using docker containers. It will mount the current directory inside the docker
+along with (optionally) an SSH agent socket and .netrc file. To do this, it remaps the UID/GID of a given user and group
+within the docker image to match that of the external (normal) user. */
+package main
 
 import (
 	"errors"
 	"fmt"
+	"flag"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,8 +15,6 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,34 +51,21 @@ var activeProfile = &Profile{
 	UpdatePersistent: true,
 }
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "canon",
-	Short: "A tool for running dev environments using docker containers.",
-	Long:  "A tool for running dev environments using docker containers. It will mount the current directory inside the docker " +
-	"along with (optionally) an SSH agent socket and .netrc file. To do this, it remaps the UID/GID of a given user and group " +
-	"within the docker image to match that of the external (normal) user.",
-	SilenceUsage: true,
-	Args: cobra.ArbitraryArgs,
-}
-
 // Global so it can be referenced in update
 var mergedCfg map[string]interface{}
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
+func parseConfigs() {
 	// load a local/project specific config if found
 	cfg := make(map[string]interface{})
 	repoCfgFile, err := findProjectConfig()
 	if err == nil {
 		cfg, err = mergeInConfig(cfg, repoCfgFile, true)
-		cobra.CheckErr(err)
+		checkErr(err)
 	}
 
 	// override with settings from user's default or cli specified config
 	home, err := os.UserHomeDir()
-	cobra.CheckErr(err)
+	checkErr(err)
 
 	userCfgPath := home + "/.config/canon.yaml"
 	cfgPath := userCfgPath
@@ -85,7 +74,7 @@ func Execute() {
 		cfgPath = cfgArg
 	}
 	cfg, err = mergeInConfig(cfg, cfgPath, false)
-	cobra.CheckErr(err)
+	checkErr(err)
 	mergedCfg = cfg
 
 	// find and load defaults section
@@ -96,7 +85,7 @@ func Execute() {
 
 	// determine the default profile from configs
 	defProfileName, err := getDefaultProfile(cfg)
-	cobra.CheckErr(err)
+	checkErr(err)
 	profileName := defProfileName
 
 	// override with cli specified profile
@@ -106,7 +95,7 @@ func Execute() {
 	// find and load profile
 	p, ok = cfg[profileName]
 	if !ok {
-		cobra.CheckErr(fmt.Errorf("no profile named %s", profileName))
+		checkErr(fmt.Errorf("no profile named %s", profileName))
 	}
 	mapstructure.Decode(p, activeProfile)
 	activeProfile.Name = profileName
@@ -114,22 +103,26 @@ func Execute() {
 	// if arch-specific images are set, use one of those for defaults
 	swapArchImage(activeProfile)
 
-	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", userCfgPath, "config file")
-	rootCmd.PersistentFlags().StringVar(&profileName, "profile", defProfileName, "profile name")
-	rootCmd.PersistentFlags().StringVar(&activeProfile.Image, "image", activeProfile.Image, "docker image name")
-	rootCmd.PersistentFlags().StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (amd64 or arm64)")
-	rootCmd.PersistentFlags().StringVar(&activeProfile.User, "user", activeProfile.User, "user to map to inside the canon environment")
-	rootCmd.PersistentFlags().StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
-	rootCmd.PersistentFlags().BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
-	rootCmd.PersistentFlags().BoolVar(&activeProfile.Netrc, "netrc", activeProfile.Netrc, "mount ~/.netrc (read-only) in the canon environment")
-
-	// default to shell subcommand if no subcommand given
-	cmd, _, err := rootCmd.Find(os.Args[1:])
-	if err == nil && cmd.Use == rootCmd.Use && cmd.Flags().Parse(os.Args[1:]) != pflag.ErrHelp {
-		args := append([]string{shellCmd.Use}, os.Args[1:]...)
-		rootCmd.SetArgs(args)
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage:\n\n")
+		fmt.Fprintf(os.Stderr, "  Interactive shell\n  %s [shell]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Directly run a command\n  %s command arg1 ... argN\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Show current config\n  %s config\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Update docker images\n  %s update [-a(ll)]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options (defaults shown from current profile):\n")
+		flag.PrintDefaults()
 	}
-	rootCmd.Execute()
+
+	flag.StringVar(&cfgPath, "config", userCfgPath, "config file")
+	flag.StringVar(&profileName, "profile", defProfileName, "profile name")
+	flag.StringVar(&activeProfile.Image, "image", activeProfile.Image, "docker image name")
+	flag.StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (\"amd64\" or \"arm64\")")
+	flag.StringVar(&activeProfile.User, "user", activeProfile.User, "user to map to inside the canon environment")
+	flag.StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
+	flag.BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
+	flag.BoolVar(&activeProfile.Netrc, "netrc", activeProfile.Netrc, "mount ~/.netrc (read-only) in the canon environment")
+
+	flag.Parse()
 }
 
 func findProjectConfig() (path string, err error) {
@@ -274,4 +267,10 @@ func swapArchImage(profile *Profile) {
 	if profile.Arch == "arm64" && profile.ImageARM64 != "" {
 		profile.Image = profile.ImageARM64
 	}
+}
+
+func showConfig(profile *Profile) {
+		ret, err := yaml.Marshal(profile)
+		checkErr(err)
+		fmt.Printf("Profile:\n%s\n", ret)
 }

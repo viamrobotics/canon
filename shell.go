@@ -1,9 +1,10 @@
-package cmd
+package main
 
 import (
 	"bufio"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,23 +24,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/moby/term"
-	"github.com/spf13/cobra"
 )
-
-// shellCmd represents the shell command
-var shellCmd = &cobra.Command{
-	Use:   "shell",
-	Short: "Execute a shell in the canon environment (default)",
-	Long: `Exectute a shell in the canon environment.
-	This is executed by default if no other command is given.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return shell(args)
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(shellCmd)
-}
 
 //go:embed canon_setup.sh
 var canonSetupScript string
@@ -47,8 +32,8 @@ var canonSetupScript string
 var canonMountPoint = "/host"
 
 func shell(args []string) (err error) {
-	if len(args) == 0 {
-		args = append(args, "bash", "-l")
+	if len(args) < 1 {
+		return errors.New("shell needs at least one argument to run")
 	}
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -246,7 +231,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 
 	if profile.Netrc {
 		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
+		checkErr(err)
 		userNetRC := filepath.Join(home, ".netrc")
 		canonNetRC := "/home/" + profile.User + "/.netrc"
 		mnt := mount.Mount{
