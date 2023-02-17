@@ -19,21 +19,26 @@ import (
 type Profile struct {
 	Name             string
 	Image            string
+	ImageAMD64       string `yaml:"image_amd64"`
+	ImageARM64       string `yaml:"image_arm64"`
 	Arch             string
+	MinimumDate      time.Time `yaml:"minimum_date"`
 	Persistent       bool
 	Ssh              bool
 	Netrc            bool
 	User             string
 	Group            string
 	Path             string
-	UpdateInterval   time.Duration
-	UpdatePersistent bool
+	UpdateInterval   time.Duration `yaml:"update_interval"`
+	UpdatePersistent bool `yaml:"update_persistent"`
 }
 
 var activeProfile = &Profile{
 	Name:             "default",
-	Image:            "ghcr.io/viamrobotics/canon:latest",
+	ImageAMD64:       "ghcr.io/viamrobotics/canon:amd64",
+	ImageARM64:       "ghcr.io/viamrobotics/canon:arm64",
 	Arch:             runtime.GOARCH,
+	MinimumDate:      time.Time{},
 	Persistent:       false,
 	Ssh:              true,
 	Netrc:            true,
@@ -83,6 +88,12 @@ func Execute() {
 	cobra.CheckErr(err)
 	mergedCfg = cfg
 
+	// find and load defaults section
+	p, ok := cfg["defaults"]
+	if ok {
+		mapstructure.Decode(p, activeProfile)
+	}
+
 	// determine the default profile from configs
 	defProfileName, err := getDefaultProfile(cfg)
 	cobra.CheckErr(err)
@@ -93,12 +104,15 @@ func Execute() {
 		profileName = profArg
 	}
 	// find and load profile
-	p, ok := cfg[profileName]
+	p, ok = cfg[profileName]
 	if !ok {
 		cobra.CheckErr(fmt.Errorf("no profile named %s", profileName))
 	}
 	mapstructure.Decode(p, activeProfile)
 	activeProfile.Name = profileName
+
+	// if arch-specific images are set, use one of those for defaults
+	swapArchImage(activeProfile)
 
 	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", userCfgPath, "config file")
 	rootCmd.PersistentFlags().StringVar(&profileName, "profile", defProfileName, "profile name")
@@ -115,7 +129,6 @@ func Execute() {
 		args := append([]string{shellCmd.Use}, os.Args[1:]...)
 		rootCmd.SetArgs(args)
 	}
-
 	rootCmd.Execute()
 }
 
@@ -249,4 +262,16 @@ func getEarlyFlag(flagName string) string {
 		}
 	}
 	return ""
+}
+
+func swapArchImage(profile *Profile) {
+	if profile.Image != "" {
+		return
+	}
+	if profile.Arch == "amd64" && profile.ImageAMD64 != "" {
+		profile.Image = profile.ImageAMD64
+	}
+	if profile.Arch == "arm64" && profile.ImageARM64 != "" {
+		profile.Image = profile.ImageARM64
+	}
 }

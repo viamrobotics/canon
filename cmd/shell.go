@@ -205,6 +205,7 @@ func stopContainer(ctx context.Context, cli *client.Client, containerID string) 
 }
 
 func startContainer(ctx context.Context, cli *client.Client, profile *Profile, sshSock string) (string, error) {
+	swapArchImage(profile)
 	cfg := &container.Config{
 		Image:        profile.Image,
 		AttachStdout: true,
