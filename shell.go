@@ -71,7 +71,7 @@ func shell(args []string) (err error) {
 		Cmd:          args,
 	}
 	if sshSock != "" {
-		execCfg.Env = []string{"SSH_AUTH_SOCK="+sshSock}
+		execCfg.Env = []string{"SSH_AUTH_SOCK=" + sshSock}
 	}
 
 	execResp, err := cli.ContainerExecCreate(ctx, containerID, execCfg)
@@ -88,7 +88,7 @@ func shell(args []string) (err error) {
 	if err != nil {
 		// for very fast commands, the resize may happen too early or too late
 		if !strings.Contains(err.Error(), "cannot resize a stopped container") &&
-		   !strings.Contains(err.Error(), "no such exec") {
+			!strings.Contains(err.Error(), "no such exec") {
 			return err
 		}
 	}
@@ -190,7 +190,6 @@ func stopContainer(ctx context.Context, cli *client.Client, containerID string) 
 }
 
 func startContainer(ctx context.Context, cli *client.Client, profile *Profile, sshSock string) (string, error) {
-	swapArchImage(profile)
 	cfg := &container.Config{
 		Image:        profile.Image,
 		AttachStdout: true,
@@ -201,13 +200,13 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	hostCfg := &container.HostConfig{AutoRemove: true}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
-	name := "canon-"+profile.Name
+	name := "canon-" + profile.Name
 	if profile.Ssh {
 		if sshSock != "" {
-				mnt := mount.Mount{
-				Type:     "bind",
-				Source:   sshSock,
-				Target:   sshSock,
+			mnt := mount.Mount{
+				Type:   "bind",
+				Source: sshSock,
+				Target: sshSock,
 			}
 			hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 		}
@@ -252,9 +251,9 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	}
 
 	mnt := mount.Mount{
-		Type:     "bind",
-		Source:   profile.Path,
-		Target:   canonMountPoint,
+		Type:   "bind",
+		Source: profile.Path,
+		Target: canonMountPoint,
 	}
 	hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 
@@ -299,13 +298,13 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true})
 	defer hijack.Close()
 
-    scanner := bufio.NewScanner(hijack.Reader)
-    for scanner.Scan() {
-        if strings.Contains(scanner.Text(), "CANON_READY") {
-            break
-        }
-    }
-    return containerID, scanner.Err()
+	scanner := bufio.NewScanner(hijack.Reader)
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), "CANON_READY") {
+			break
+		}
+	}
+	return containerID, scanner.Err()
 }
 
 func getWorkingDir(profile *Profile) (string, error) {

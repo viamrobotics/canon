@@ -1,12 +1,14 @@
-/* A tool for running dev environments using docker containers. It will mount the current directory inside the docker
+/*
+A tool for running dev environments using docker containers. It will mount the current directory inside the docker
 along with (optionally) an SSH agent socket and .netrc file. To do this, it remaps the UID/GID of a given user and group
-within the docker image to match that of the external (normal) user. */
+within the docker image to match that of the external (normal) user.
+*/
 package main
 
 import (
 	"errors"
-	"fmt"
 	"flag"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -32,7 +34,7 @@ type Profile struct {
 	Group            string
 	Path             string
 	UpdateInterval   time.Duration `yaml:"update_interval"`
-	UpdatePersistent bool `yaml:"update_persistent"`
+	UpdatePersistent bool          `yaml:"update_persistent"`
 }
 
 var activeProfile = &Profile{
@@ -123,6 +125,19 @@ func parseConfigs() {
 	flag.BoolVar(&activeProfile.Netrc, "netrc", activeProfile.Netrc, "mount ~/.netrc (read-only) in the canon environment")
 
 	flag.Parse()
+
+	var archSwitch bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "arch":
+			archSwitch = true
+		case "image":
+			archSwitch = false
+		}
+	})
+	if archSwitch {
+		swapArchImage(activeProfile)
+	}
 }
 
 func findProjectConfig() (path string, err error) {
@@ -248,19 +263,18 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 
 func getEarlyFlag(flagName string) string {
 	for i, arg := range os.Args {
-		if strings.HasPrefix(arg, "--"+flagName) {
-			if len(os.Args) >= i {
-				return os.Args[i+1]
-			}
+		if len(os.Args) >= i && (arg == "--"+flagName || arg == "-"+flagName) {
+			return os.Args[i+1]
+		}
+		key, val, ok := strings.Cut(arg, "=")
+		if ok && (key == "--"+flagName || key == "-"+flagName) {
+			return val
 		}
 	}
 	return ""
 }
 
 func swapArchImage(profile *Profile) {
-	if profile.Image != "" {
-		return
-	}
 	if profile.Arch == "amd64" && profile.ImageAMD64 != "" {
 		profile.Image = profile.ImageAMD64
 	}
@@ -270,7 +284,7 @@ func swapArchImage(profile *Profile) {
 }
 
 func showConfig(profile *Profile) {
-		ret, err := yaml.Marshal(profile)
-		checkErr(err)
-		fmt.Printf("Profile:\n%s\n", ret)
+	ret, err := yaml.Marshal(profile)
+	checkErr(err)
+	fmt.Printf("Profile:\n%s\n", ret)
 }

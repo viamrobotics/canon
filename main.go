@@ -1,9 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
-	"flag"
 )
 
 var defaultArgs = []string{"bash", "-l"}
