@@ -20,13 +20,9 @@ func main() {
 		case "config":
 			showConfig(activeProfile)
 		case "update":
-			all := false
-			if len(args) >= 2 {
-				if args[1] == "-a" || args[1] == "-all" || args[1] == "--all" {
-					all = true
-				}
-			}
-			runUpdate(all)
+			runUpdate(activeProfile, checkAll(args))
+		case "terminate":
+			terminate(activeProfile, checkAll(args))
 		case "--":
 			fallthrough
 		case "run":
@@ -45,4 +41,14 @@ func checkErr(err error) {
 	if err2 != nil {
 		fmt.Printf("Error encountered printing to stderr: %s\nOriginal Error: %s", err2, err)
 	}
+}
+
+func checkAll(args []string) bool {
+	all := false
+	if len(args) >= 2 {
+		if args[1] == "-a" || args[1] == "-all" || args[1] == "--all" {
+			all = true
+		}
+	}
+	return all
 }

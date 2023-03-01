@@ -1,4 +1,4 @@
-module go.viam.com/canon
+module github.com/viamrobotics/canon
 
 go 1.19
 

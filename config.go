@@ -94,13 +94,16 @@ func parseConfigs() {
 	if profArg := getEarlyFlag("profile"); profArg != "" {
 		profileName = profArg
 	}
-	// find and load profile
-	p, ok = cfg[profileName]
-	if !ok {
-		checkErr(fmt.Errorf("no profile named %s", profileName))
+
+	if profileName != "" {
+		// find and load profile
+		p, ok = cfg[profileName]
+		if !ok {
+			checkErr(fmt.Errorf("no profile named %s", profileName))
+		}
+		mapstructure.Decode(p, activeProfile)
+		activeProfile.Name = profileName
 	}
-	mapstructure.Decode(p, activeProfile)
-	activeProfile.Name = profileName
 
 	// if arch-specific images are set, use one of those for defaults
 	swapArchImage(activeProfile)
@@ -111,6 +114,7 @@ func parseConfigs() {
 		fmt.Fprintf(os.Stderr, "  Directly run a command\n  %s command arg1 ... argN\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  Show current config\n  %s config\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  Update docker images\n  %s update [-a(ll)]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Terminate (stop/close) canon-managed container(s)\n  %s terminate [-a(ll)]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options (defaults shown from current profile):\n")
 		flag.PrintDefaults()
 	}
@@ -148,7 +152,7 @@ func findProjectConfig() (path string, err error) {
 	}
 
 	for {
-		path = filepath.Join(cwd, "canon.yaml")
+		path = filepath.Join(cwd, ".canon.yaml")
 		_, err = os.Stat(path)
 		if err == nil || cwd == string(os.PathSeparator) {
 			return
@@ -250,11 +254,17 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 		}
 	}
 
-	d, ok := cfg["default_profile"]
+	d, ok := cfg["defaults"]
 	if ok {
-		pName, ok := d.(string)
+		dMap, ok := d.(map[string]interface{})
 		if ok {
-			return pName, nil
+			p, ok := dMap["profile"]
+			if ok {
+				pName, ok := p.(string)
+				if ok {
+					return pName, nil
+				}
+			}
 		}
 	}
 
