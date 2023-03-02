@@ -20,9 +20,9 @@ func main() {
 		case "config":
 			showConfig(activeProfile)
 		case "update":
-			runUpdate(activeProfile, checkAll(args))
+			checkErr(cmdUpdate(activeProfile, checkAll(args)))
 		case "terminate":
-			terminate(activeProfile, checkAll(args))
+			checkErr(terminate(activeProfile, checkAll(args)))
 		case "--":
 			fallthrough
 		case "run":

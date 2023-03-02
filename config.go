@@ -23,18 +23,18 @@ import (
 type Profile struct {
 	Name             string
 	Image            string
-	ImageAMD64       string `yaml:"image_amd64"`
-	ImageARM64       string `yaml:"image_arm64"`
+	ImageAMD64       string `yaml:"image_amd64" mapstructure:"image_amd64"`
+	ImageARM64       string `yaml:"image_arm64" mapstructure:"image_arm64"`
 	Arch             string
-	MinimumDate      time.Time `yaml:"minimum_date"`
+	MinimumDate      time.Time `yaml:"minimum_date" mapstructure:"minimum_data"`
 	Persistent       bool
 	Ssh              bool
 	Netrc            bool
 	User             string
 	Group            string
 	Path             string
-	UpdateInterval   time.Duration `yaml:"update_interval"`
-	UpdatePersistent bool          `yaml:"update_persistent"`
+	UpdateInterval   time.Duration `yaml:"update_interval" mapstructure:"update_interval"`
+	UpdatePersistent bool          `yaml:"update_persistent" mapstructure:"update_persistent"`
 }
 
 var activeProfile = &Profile{

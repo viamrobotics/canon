@@ -86,7 +86,9 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 
 	if profile.Netrc {
 		home, err := os.UserHomeDir()
-		checkErr(err)
+		if err != nil {
+			return "", err
+		}
 		userNetRC := filepath.Join(home, ".netrc")
 		canonNetRC := "/home/" + profile.User + "/.netrc"
 		mnt := mount.Mount{
@@ -163,6 +165,6 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	return containerID, scanner.Err()
 }
 
-func terminate(profile *Profile, all bool) {
-	return
+func terminate(profile *Profile, all bool) error {
+	return nil
 }
