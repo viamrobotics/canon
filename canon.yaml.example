@@ -1,0 +1,26 @@
+---
+defaults:
+  profile: myprofile
+  update_interval: 24h0m0s
+  persistent: false
+  ssh: true
+  netrc: false
+
+project1:
+  image_amd64: ghcr.io/viamrobotics/canon:amd64
+  image_arm64: ghcr.io/viamrobotics/canon:arm64
+  minimum_date: 2023-03-06T00:15:26.271839721-05:00
+  update_interval: 72h0m0s
+  user: testbot
+  group: testbot
+  path: /home/user1/source/proj1
+
+project2:
+  image: alpine:latest
+  user: godzilla
+  group: kaiju
+  path: /home/user1/source/proj2
+
+myprofile:
+  image: ubuntu:latest
+  arch: arm64

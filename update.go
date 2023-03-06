@@ -3,19 +3,23 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/mitchellh/mapstructure"
 	"gopkg.in/yaml.v3"
 )
 
-const checkDataRelPath = ".cache/canon/update-data.yaml"
+const (
+	checkDataRelPath = ".cache/canon/update-data.yaml"
+	lockRelPath      = ".cache/canon/update.lock"
+)
 
 type ImageDef struct {
 	Image    string
@@ -39,6 +43,14 @@ func (i *ImageDef) UnmarshalYAML(n *yaml.Node) error {
 type ImageCheckData map[ImageDef]time.Time
 
 func update(images ...ImageDef) error {
+	lock, err := getLock()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		checkErr(dropLock(lock))
+	}()
+
 	checkData, err := readCheckData()
 	if err != nil {
 		return err
@@ -61,11 +73,53 @@ func update(images ...ImageDef) error {
 	return checkData.write()
 }
 
+func getLock() (*os.File, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	lockFile := filepath.Join(home, lockRelPath)
+
+	file, err := os.OpenFile(lockFile, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, err
+	}
+	_, err = fmt.Fprintf(file, "%d", os.Getpid())
+	if err != nil {
+		return file, err
+	}
+
+	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if errors.Is(err, syscall.EAGAIN) {
+		err = errors.New("another canon process is holding " + lockFile)
+	}
+	return file, err
+}
+
+func dropLock(file *os.File) error {
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_UN); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Remove(file.Name())
+}
+
 // Updates the image for the active (default or specified) profile, and (optionally) all known profiles.
 func cmdUpdate(curProfile *Profile, all bool) error {
 	// Used to de-dupe
 	imagesMap := make(map[ImageDef]bool)
-	imagesMap[ImageDef{Image: curProfile.Image, Platform: "linux/" + curProfile.Arch}] = true
+
+	checkData, err := readCheckData()
+	if err != nil {
+		return err
+	}
+
+	// add current profile's image
+	for _, i := range checkImageDate(curProfile, checkData) {
+		imagesMap[i] = true
+	}
 
 	if all {
 		for _, p := range mergedCfg {
@@ -73,37 +127,56 @@ func cmdUpdate(curProfile *Profile, all bool) error {
 			if !ok {
 				continue
 			}
-			prof := &Profile{}
-			if err := mapstructure.Decode(iface, prof); err != nil {
+			prof, err := newProfile(true)
+			if err != nil {
 				return err
 			}
 
-			// Dual arch profile
-			if prof.ImageAMD64 != "" && prof.ImageARM64 != "" {
-				imagesMap[ImageDef{Image: prof.ImageAMD64, Platform: "linux/amd64"}] = true
-				imagesMap[ImageDef{Image: prof.ImageARM64, Platform: "linux/arm64"}] = true
-				continue
+			// we want defaults but NOT the defaults for images
+			prof.ImageAMD64 = ""
+			prof.ImageARM64 = ""
+			prof.Image = ""
+
+			err = mapDecode(iface, prof)
+			if err != nil {
+				return err
 			}
 
-			// No image in this profile
-			if prof.Image == "" {
-				continue
+			for _, i := range checkImageDate(prof, checkData) {
+				imagesMap[i] = true
 			}
-
-			// If no arch is specified
-			if prof.Arch == "" {
-				prof.Arch = curProfile.Arch
-			}
-			imagesMap[ImageDef{Image: prof.Image, Platform: "linux/" + prof.Arch}] = true
 		}
 	}
 
 	var images []ImageDef
 	for i := range imagesMap {
+		fmt.Printf("queuing update: %s|%s\n", i.Image, i.Platform)
 		images = append(images, i)
 	}
 
 	return update(images...)
+}
+
+func checkImageDate(profile *Profile, checkData ImageCheckData) []ImageDef {
+	var imageCandidates, images []ImageDef
+
+	// Dual arch profile
+	if profile.ImageAMD64 != "" && profile.ImageARM64 != "" {
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageAMD64, Platform: "linux/amd64"})
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARM64, Platform: "linux/arm64"})
+	} else if profile.Image != "" {
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image, Platform: profile.Arch})
+	} else {
+		return images
+	}
+
+	for _, i := range imageCandidates {
+		lastUpdate, ok := checkData[i]
+		if !ok || time.Now().After(lastUpdate.Add(profile.UpdateInterval)) || profile.MinimumDate.After(lastUpdate) {
+			images = append(images, i)
+		}
+	}
+	return images
 }
 
 func readCheckData() (ImageCheckData, error) {

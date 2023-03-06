@@ -28,6 +28,9 @@ Make sure your GOBIN is in your PATH. If not, you can add it with something like
 `export PATH="$PATH:~/go/bin"`
 Note: This path may vary. See https://go.dev/ref/mod#go-install for details.
 
+Make sure you have Docker installed. If unsure, run `docker version` to verify your system is working.
+For Docker install instructions, see https://docs.docker.com/engine/install/
+
 ## Usage
 
 Simply run `canon` with no arguments to get a shell inside the default canon environment.
@@ -40,6 +43,8 @@ Ex: `canon make tests`
 Run `canon -help` for a brief listing of arguments you can set via CLI.
 
 ## Configuration
+
+Look at canon.yaml.example for a sample config.
 
 ### Configuration Layers
 
@@ -54,15 +59,15 @@ The steps in the configuration parsing are as follows
 2. Starting from the current directory, the file tree is searched upward for a project level config file named exactly `.canon.yaml`
     * `.canon.yaml` is expected to be at the root/top of any specific project.
     * The `path` setting is set automatically at runtime for all profiles in this config, so that they're tied to the root of the project.
-3. All profiles in the user config is then merged, thus allowing user overrides of any project specific settings on a per-profile basis.
+3. All profiles in the user config are then merged, thus allowing user overrides of any project specific settings on a per-profile basis.
 4. If `-profile` is specified on the command line, the named profile is loaded. Otherwise, things continue.
 5. All loaded profiles with a `path` setting are searched for one that contains the current working directory.
     * This allows profiles to be automatically selected based on the current project/directory.
 6. If no matching profile is found, the one named in the `profile` field of the user's `defaults` section is used.
 7. If no default is set, the default profile is used (built-in values optionally overridden by the `defaults` section.)
 
-Run `canon config` to see exactly what would be used at any point. Note that this may change based on the current project/directory,
-as well as with different arguments provided to the command.
+Run `canon config` to see exactly what would be used at any point (and copy it to a profile in your config to modify.) Note that this may
+change based on the current project/directory, as well as with different arguments provided to the command.
 
 ### Configuration Fields
 
@@ -89,9 +94,6 @@ Profiles are defined with the following fields:
 	- This should **never** be used within project configs, as the path will be set automatically at runtime for project-based profiles.
 * `update_interval` A duration (in Go format) that determines how often to check for updates to an image.
 	- Defaults to `24h0m0s`
-	- Set to `-1` to only update manually (or when a profiles minimum_date is advanced.)
-* `update_persistent` A boolean that sets if persistent containers should be automatically stopped (to be restarted) when an image updates.
-
 
 ## Persistent Mode
 
@@ -99,9 +101,7 @@ By default, canon will launch a new docker container, and start a shell inside i
 is removed, so the next startup will be another "clean room." This can have drawbacks though, as it prevents multiple shells from being
 opened in the same environment, and can make build/download caching inside the container somewhat useless. As an alternate mode, a profile
 can be set with the "persistent" value set to true. In this mode, any canon executions that use that profile will be run in the same
-container. Exiting a shell (or a command ending) will not terminate the container either. Users will need to run:
-
-`canon terminate`
+container. Exiting a shell (or a command ending) will not terminate the container either. Users will need to run: `canon terminate`
 This will terminate the container for the current profile. Optionally `-a` can be appended to terminate ALL canon-managed containers.
 
 ## Emulation

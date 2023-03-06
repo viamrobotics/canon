@@ -21,36 +21,48 @@ import (
 )
 
 type Profile struct {
-	Name             string
-	Image            string
-	ImageAMD64       string `yaml:"image_amd64" mapstructure:"image_amd64"`
-	ImageARM64       string `yaml:"image_arm64" mapstructure:"image_arm64"`
-	Arch             string
-	MinimumDate      time.Time `yaml:"minimum_date" mapstructure:"minimum_data"`
-	Persistent       bool
-	Ssh              bool
-	Netrc            bool
-	User             string
-	Group            string
-	Path             string
-	UpdateInterval   time.Duration `yaml:"update_interval" mapstructure:"update_interval"`
-	UpdatePersistent bool          `yaml:"update_persistent" mapstructure:"update_persistent"`
+	Name           string
+	Image          string
+	ImageAMD64     string `yaml:"image_amd64" mapstructure:"image_amd64"`
+	ImageARM64     string `yaml:"image_arm64" mapstructure:"image_arm64"`
+	Arch           string
+	MinimumDate    time.Time     `yaml:"minimum_date" mapstructure:"minimum_date"`
+	UpdateInterval time.Duration `yaml:"update_interval" mapstructure:"update_interval"`
+	Persistent     bool
+	Ssh            bool
+	Netrc          bool
+	User           string
+	Group          string
+	Path           string
 }
 
-var activeProfile = &Profile{
-	Name:             "default",
-	ImageAMD64:       "ghcr.io/viamrobotics/canon:amd64",
-	ImageARM64:       "ghcr.io/viamrobotics/canon:arm64",
-	Arch:             runtime.GOARCH,
-	MinimumDate:      time.Time{},
-	Persistent:       false,
-	Ssh:              true,
-	Netrc:            true,
-	User:             "testbot",
-	Group:            "testbot",
-	Path:             "/",
-	UpdateInterval:   time.Hour * 24,
-	UpdatePersistent: true,
+var activeProfile = &Profile{}
+
+func newProfile(loadUserDefaults bool) (*Profile, error) {
+	prof := &Profile{
+		Name:           "default",
+		ImageAMD64:     "ghcr.io/viamrobotics/canon:amd64",
+		ImageARM64:     "ghcr.io/viamrobotics/canon:arm64",
+		Arch:           runtime.GOARCH,
+		MinimumDate:    time.Time{},
+		UpdateInterval: time.Hour * 24,
+		Persistent:     false,
+		Ssh:            true,
+		Netrc:          true,
+		User:           "testbot",
+		Group:          "testbot",
+		Path:           "/",
+	}
+
+	if loadUserDefaults {
+		def, ok := mergedCfg["defaults"]
+		if ok {
+			if err := mapstructure.Decode(def, prof); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return prof, nil
 }
 
 // Global so it can be referenced in update
@@ -79,11 +91,8 @@ func parseConfigs() {
 	checkErr(err)
 	mergedCfg = cfg
 
-	// find and load defaults section
-	p, ok := cfg["defaults"]
-	if ok {
-		mapstructure.Decode(p, activeProfile)
-	}
+	activeProfile, err = newProfile(true)
+	checkErr(err)
 
 	// determine the default profile from configs
 	defProfileName, err := getDefaultProfile(cfg)
@@ -97,11 +106,11 @@ func parseConfigs() {
 
 	if profileName != "" {
 		// find and load profile
-		p, ok = cfg[profileName]
+		p, ok := cfg[profileName]
 		if !ok {
 			checkErr(fmt.Errorf("no profile named %s", profileName))
 		}
-		mapstructure.Decode(p, activeProfile)
+		mapDecode(p, activeProfile)
 		activeProfile.Name = profileName
 	}
 
@@ -297,4 +306,15 @@ func showConfig(profile *Profile) {
 	ret, err := yaml.Marshal(profile)
 	checkErr(err)
 	fmt.Printf("Profile:\n%s\n", ret)
+}
+
+func mapDecode(iface interface{}, p *Profile) error {
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
+		Result:     p,
+	})
+	if err != nil {
+		return err
+	}
+	return dec.Decode(iface)
 }
