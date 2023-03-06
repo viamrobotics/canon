@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,10 +14,13 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/opencontainers/image-spec/specs-go/v1"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"go.uber.org/multierr"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed canon_setup.sh
@@ -56,7 +61,6 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	hostCfg := &container.HostConfig{AutoRemove: true}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
-	name := "canon-" + profile.Name
 	if profile.Ssh {
 		if sshSock != "" {
 			mnt := mount.Mount{
@@ -115,12 +119,27 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	}
 	hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 
+	// label the image with the running profile data
+	profYaml, err := yaml.Marshal(profile)
+	if err != nil {
+		return "", err
+	}
+
+	cfg.Labels = map[string]string{
+		"com.viam.canon.type":         "one-shot",
+		"com.viam.canon.profile":      profile.Name,
+		"com.viam.canon.profile-data": string(profYaml),
+	}
+	if profile.Persistent {
+		cfg.Labels["com.viam.canon.type"] = "persistent"
+	}
+	name := fmt.Sprintf("canon-%s-%x", profile.Name, rand.Uint32())
+
 	// fill out the entrypoint template
 	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_USER__", profile.User, -1)
 	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_GROUP__", profile.Group, -1)
 	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_UID__", fmt.Sprint(os.Getuid()), -1)
 	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_GID__", fmt.Sprint(os.Getgid()), -1)
-	//cfg.Entrypoint = []string{"bash", "-c", canonEntryPoint}
 	cfg.Entrypoint = []string{}
 	cfg.Cmd = []string{"bash", "-c", canonSetupScript}
 
@@ -166,5 +185,62 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 }
 
 func terminate(profile *Profile, all bool) error {
-	return nil
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	f := filters.NewArgs()
+	if all {
+		f.Add("label", "com.viam.canon.profile")
+	} else {
+		f.Add("label", "com.viam.canon.profile="+profile.Name)
+	}
+	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
+	if err != nil {
+		return err
+	}
+	if len(containers) > 1 && !all {
+		return errors.New("multiple matching containers found, please retry with '--all' option")
+	}
+	timeout := time.Second * 5
+	for _, c := range containers {
+		fmt.Printf("terminating %s\n", c.Labels["com.viam.canon.profile"])
+		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, &timeout))
+	}
+	return err
+}
+
+func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Profile) (string, error) {
+	f := filters.NewArgs()
+	f.Add("label", "com.viam.canon.type=persistent")
+	f.Add("label", "com.viam.canon.profile="+profile.Name)
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: f})
+	if err != nil {
+		return "", err
+	}
+	if len(containers) > 1 {
+		return "", fmt.Errorf("more than one container is running for profile %s, please terminate all containers and retry", profile.Name)
+	}
+	if len(containers) < 1 {
+		return "", nil
+	}
+
+	curProfYaml, err := yaml.Marshal(profile)
+	if err != nil {
+		return "", err
+	}
+
+	profYaml, ok := containers[0].Labels["com.viam.canon.profile-data"]
+	if !ok {
+		return "", fmt.Errorf("no profile data on persistent container for %s, please terminate all containers and retry", profile.Name)
+	}
+
+	if profYaml != string(curProfYaml) {
+		return "", fmt.Errorf(
+			"existing container settings for %s don't match current settings, please terminate all containers and retry",
+			profile.Name,
+		)
+	}
+
+	return containers[0].ID, nil
 }

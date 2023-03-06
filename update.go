@@ -64,10 +64,17 @@ func update(images ...ImageDef) error {
 
 	for _, i := range images {
 		resp, err := cli.ImagePull(ctx, i.Image, types.ImagePullOptions{Platform: i.Platform})
-		checkErr(err)
+		if err != nil {
+			return err
+		}
 		_, err = io.Copy(os.Stdout, resp)
-		checkErr(err)
-		resp.Close()
+		if err != nil {
+			return err
+		}
+		err = resp.Close()
+		if err != nil {
+			return err
+		}
 		checkData[i] = time.Now()
 	}
 	return checkData.write()

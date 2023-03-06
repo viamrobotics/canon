@@ -68,19 +68,22 @@ func newProfile(loadUserDefaults bool) (*Profile, error) {
 // Global so it can be referenced in update
 var mergedCfg map[string]interface{}
 
-func parseConfigs() {
+func parseConfigs() error {
 	// load a local/project specific config if found
 	cfg := make(map[string]interface{})
 	repoCfgFile, err := findProjectConfig()
 	if err == nil {
 		cfg, err = mergeInConfig(cfg, repoCfgFile, true)
-		checkErr(err)
+		if err != nil {
+			return err
+		}
 	}
 
 	// override with settings from user's default or cli specified config
 	home, err := os.UserHomeDir()
-	checkErr(err)
-
+	if err != nil {
+		return err
+	}
 	userCfgPath := home + "/.config/canon.yaml"
 	cfgPath := userCfgPath
 
@@ -88,15 +91,21 @@ func parseConfigs() {
 		cfgPath = cfgArg
 	}
 	cfg, err = mergeInConfig(cfg, cfgPath, false)
-	checkErr(err)
+	if err != nil {
+		return err
+	}
 	mergedCfg = cfg
 
 	activeProfile, err = newProfile(true)
-	checkErr(err)
+	if err != nil {
+		return err
+	}
 
 	// determine the default profile from configs
 	defProfileName, err := getDefaultProfile(cfg)
-	checkErr(err)
+	if err != nil {
+		return err
+	}
 	profileName := defProfileName
 
 	// override with cli specified profile
@@ -108,7 +117,7 @@ func parseConfigs() {
 		// find and load profile
 		p, ok := cfg[profileName]
 		if !ok {
-			checkErr(fmt.Errorf("no profile named %s", profileName))
+			return fmt.Errorf("no profile named %s", profileName)
 		}
 		mapDecode(p, activeProfile)
 		activeProfile.Name = profileName
@@ -151,6 +160,7 @@ func parseConfigs() {
 	if archSwitch {
 		swapArchImage(activeProfile)
 	}
+	return nil
 }
 
 func findProjectConfig() (path string, err error) {

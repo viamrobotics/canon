@@ -39,9 +39,19 @@ func shell(args []string) (err error) {
 		}
 	}
 
-	containerID, err := startContainer(ctx, cli, activeProfile, sshSock)
-	if err != nil {
-		return err
+	var containerID string
+	if activeProfile.Persistent {
+		containerID, err = getPersistentContainer(ctx, cli, activeProfile)
+		if err != nil {
+			return err
+		}
+	}
+
+	if containerID == "" {
+		containerID, err = startContainer(ctx, cli, activeProfile, sshSock)
+		if err != nil {
+			return err
+		}
 	}
 
 	wd, err := getWorkingDir(activeProfile)
