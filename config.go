@@ -21,64 +21,60 @@ import (
 )
 
 type Profile struct {
-	Name           string
-	Image          string
-	ImageAMD64     string `yaml:"image_amd64" mapstructure:"image_amd64"`
-	ImageARM64     string `yaml:"image_arm64" mapstructure:"image_arm64"`
-	Arch           string
+	name           string
+	Image          string        `yaml:"image" mapstructure:"image"`
+	ImageAMD64     string        `yaml:"image_amd64" mapstructure:"image_amd64"`
+	ImageARM64     string        `yaml:"image_arm64" mapstructure:"image_arm64"`
+	Arch           string        `yaml:"arch" mapstructure:"arch"`
 	MinimumDate    time.Time     `yaml:"minimum_date" mapstructure:"minimum_date"`
 	UpdateInterval time.Duration `yaml:"update_interval" mapstructure:"update_interval"`
-	Persistent     bool
-	Ssh            bool
-	Netrc          bool
-	User           string
-	Group          string
-	Path           string
+	Persistent     bool          `yaml:"persistent" mapstructure:"persistent"`
+	SSH            bool          `yaml:"ssh" mapstructure:"ssh"`
+	NetRC          bool          `yaml:"netrc" mapstructure:"netrc"`
+	User           string        `yaml:"user" mapstructure:"user"`
+	Group          string        `yaml:"group" mapstructure:"group"`
+	Path           string        `yaml:"path" mapstructure:"path"`
 }
 
 var activeProfile = &Profile{}
 
 func newProfile(loadUserDefaults bool) (*Profile, error) {
 	prof := &Profile{
-		Name:           "default",
-		ImageAMD64:     "ghcr.io/viamrobotics/canon:amd64",
-		ImageARM64:     "ghcr.io/viamrobotics/canon:arm64",
+		name:           "builtin",
+		Image:          "debian:latest",
 		Arch:           runtime.GOARCH,
 		MinimumDate:    time.Time{},
 		UpdateInterval: time.Hour * 24,
 		Persistent:     false,
-		Ssh:            true,
-		Netrc:          true,
-		User:           "testbot",
-		Group:          "testbot",
+		SSH:            true,
+		NetRC:          true,
+		User:           "canon",
+		Group:          "canon",
 		Path:           "/",
 	}
 
 	if loadUserDefaults {
 		def, ok := mergedCfg["defaults"]
 		if ok {
-			if err := mapstructure.Decode(def, prof); err != nil {
-				return nil, err
-			}
+			return prof, mergeProfile(def, prof)
 		}
 	}
 	return prof, nil
 }
 
-// Global so it can be referenced in update
+// Global so it can be referenced in update.
 var mergedCfg map[string]interface{}
 
 func parseConfigs() error {
 	// load a local/project specific config if found
 	cfg := make(map[string]interface{})
-	repoCfgFile, err := findProjectConfig()
+	projCfgFile, err := findProjectConfig()
 	if err == nil {
-		cfg, err = mergeInConfig(cfg, repoCfgFile, true)
+		cfg, err = mergeInConfig(cfg, projCfgFile, true)
 		if err != nil {
 			return err
 		}
 	}
-
 	// override with settings from user's default or cli specified config
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -92,7 +88,9 @@ func parseConfigs() error {
 	}
 	cfg, err = mergeInConfig(cfg, cfgPath, false)
 	if err != nil {
-		return err
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	mergedCfg = cfg
 
@@ -119,11 +117,13 @@ func parseConfigs() error {
 		if !ok {
 			return fmt.Errorf("no profile named %s", profileName)
 		}
-		mapDecode(p, activeProfile)
-		activeProfile.Name = profileName
+		if err := mergeProfile(p, activeProfile); err != nil {
+			return err
+		}
+		activeProfile.name = profileName
 	}
 
-	// if arch-specific images are set, use one of those for defaults
+	// if arch-specific images are set, use one of those for displaying defaults in help output
 	swapArchImage(activeProfile)
 
 	flag.Usage = func() {
@@ -143,44 +143,32 @@ func parseConfigs() error {
 	flag.StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (\"amd64\" or \"arm64\")")
 	flag.StringVar(&activeProfile.User, "user", activeProfile.User, "user to map to inside the canon environment")
 	flag.StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
-	flag.BoolVar(&activeProfile.Ssh, "ssh", activeProfile.Ssh, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
-	flag.BoolVar(&activeProfile.Netrc, "netrc", activeProfile.Netrc, "mount ~/.netrc (read-only) in the canon environment")
+	flag.BoolVar(&activeProfile.SSH, "ssh", activeProfile.SSH, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
+	flag.BoolVar(&activeProfile.NetRC, "netrc", activeProfile.NetRC, "mount ~/.netrc (read-only) in the canon environment")
 
 	flag.Parse()
-
-	var archSwitch bool
-	flag.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "arch":
-			archSwitch = true
-		case "image":
-			archSwitch = false
-		}
-	})
-	if archSwitch {
-		swapArchImage(activeProfile)
-	}
+	// swap again in case a CLI arg would change arch
+	swapArchImage(activeProfile)
 	return nil
 }
 
-func findProjectConfig() (path string, err error) {
+func findProjectConfig() (string, error) {
 	var cwd string
-	cwd, err = os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
-		return
+		return "", err
 	}
 
 	for {
-		path = filepath.Join(cwd, ".canon.yaml")
+		path := filepath.Join(cwd, ".canon.yaml")
 		_, err = os.Stat(path)
-		if err == nil || cwd == string(os.PathSeparator) {
-			return
+		if err != nil || cwd == string(os.PathSeparator) {
+			return "", err
 		}
-
 		if errors.Is(err, fs.ErrNotExist) {
 			cwd = filepath.Dir(cwd)
 		} else {
-			return
+			return path, err
 		}
 	}
 }
@@ -189,6 +177,9 @@ func mergeInConfig(cfg map[string]interface{}, path string, setPath bool) (map[s
 	cfgNew := make(map[string]interface{})
 	cfgData, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return cfg, nil
+		}
 		return nil, err
 	}
 	err = yaml.Unmarshal(cfgData, cfgNew)
@@ -196,21 +187,38 @@ func mergeInConfig(cfg map[string]interface{}, path string, setPath bool) (map[s
 		return nil, err
 	}
 
-	if setPath {
-		for _, v := range cfgNew {
-			prof, ok := v.(map[string]interface{})
-			if ok {
-				_, ok = prof["path"]
-				if !ok {
-					prof["path"] = filepath.Dir(path)
-				}
+	for k, v := range cfgNew {
+		prof, ok := v.(map[string]interface{})
+		if ok {
+			_, ok = prof["path"]
+			if !ok && setPath {
+				prof["path"] = filepath.Dir(path)
+			}
+
+			prev, ok := cfg[k]
+			if !ok {
+				continue
+			}
+			prevProf, ok := prev.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			if _, ok := prof["image"]; ok {
+				delete(prevProf, "image_amd64")
+				delete(prevProf, "image_arm64")
+			}
+			_, ok1 := prof["image_amd64"]
+			_, ok2 := prof["image_arm64"]
+			if ok1 || ok2 {
+				delete(prevProf, "image")
 			}
 		}
 	}
 
 	outCfg := mergeMaps(cfg, cfgNew)
-	return outCfg, nil
 
+	return outCfg, nil
 }
 
 func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
@@ -232,13 +240,25 @@ func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+func mergeProfile(in interface{}, out *Profile) error {
+	// decode twice, as it's easier to check against a temp struct
+	tempProf := &Profile{}
+	if err := mapDecode(in, tempProf); err != nil {
+		return err
+	}
+	if tempProf.ImageAMD64 != "" || tempProf.ImageARM64 != "" {
+		out.Image = ""
+	}
+	return mapDecode(in, out)
+}
+
 func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 
-	wd, err := filepath.Abs(cwd)
+	cwd, err = filepath.Abs(cwd)
 	if err != nil {
 		return "", err
 	}
@@ -262,11 +282,12 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 			return "", err
 		}
 
+		wd := cwd
 		for {
 			if hostpath == wd {
 				return pName, nil
 			}
-			if hostpath == string(os.PathSeparator) {
+			if wd == string(os.PathSeparator) {
 				break
 			}
 			wd = filepath.Dir(wd)
@@ -303,7 +324,22 @@ func getEarlyFlag(flagName string) string {
 	return ""
 }
 
+func checkAll(args []string) bool {
+	all := false
+	if len(args) >= 2 {
+		if args[1] == "-a" || args[1] == "-all" || args[1] == "--all" {
+			all = true
+		}
+	}
+	return all
+}
+
 func swapArchImage(profile *Profile) {
+	// abort if image is overridden and not one of the swapable options
+	if profile.Image != "" && profile.Image != profile.ImageAMD64 && profile.Image != profile.ImageARM64 {
+		return
+	}
+
 	if profile.Arch == "amd64" && profile.ImageAMD64 != "" {
 		profile.Image = profile.ImageAMD64
 	}
@@ -313,9 +349,13 @@ func swapArchImage(profile *Profile) {
 }
 
 func showConfig(profile *Profile) {
-	ret, err := yaml.Marshal(profile)
+	ret, err := yaml.Marshal(map[string]Profile{profile.name: *profile})
 	checkErr(err)
-	fmt.Printf("Profile:\n%s\n", ret)
+	fmt.Printf("Active, merged profile (including builtin/user defaults and cli arguments)\n---\n%s\n\n\n", ret)
+
+	ret, err = yaml.Marshal(mergedCfg)
+	checkErr(err)
+	fmt.Printf("All explicitly parsed/merged config files (without builtin/default/cli)\n---\n%s\n", ret)
 }
 
 func mapDecode(iface interface{}, p *Profile) error {

@@ -1,15 +1,9 @@
-# !!!Work In Progress!!!
-
-This is not ready for normal use yet, and much of the below documentation (as well as code) is either wrong, outdated, or non-functional.
-
-Here there be dragons!
-Enter at your own risk!
-Do not feed after midnight!
-
+# !!! Beta Software !!!
+Note, this software is new and currently under beta testing. Use at your own risk.
 
 # Canon
 
-A CLI utility for managing docker-based, canonical development environments. Just run "canon" and you'll be instantly dropped into a shell
+A CLI utility for managing docker-based, canonical development environments. Just run `canon` and you'll be instantly dropped into a shell
 in a clean development environent, with all your project/code available. Use it to run complex toolchains without installing locally, and
 to avoid the dreaded "But it works on my machine!" when working with other developers.
 
@@ -44,7 +38,9 @@ Run `canon -help` for a brief listing of arguments you can set via CLI.
 
 ## Configuration
 
-Look at canon.yaml.example for a sample config.
+### Example Files
+
+Configuration file examples can be found in the configs directory.
 
 ### Configuration Layers
 
@@ -75,20 +71,26 @@ Profiles are defined with the following fields:
 
 * `arch` The architecture (only amd64 or arm64 supported currently) to run the image as.
 	- Note the architecture does NOT have to match the host in most cases where emulation is set up. See [Emulation](#emulation) below
+	- Defaults to the detected current architecture.
 * `image` The docker image used by this profile. Can be overriden by `-image`
-	- Note, this should NOT be defined if using the architecture-specific image options below.
+	- Note, this should NOT be defined if using the architecture-specific image options below. It will override them both.
 * `image_amd64` The AMD64 specific image to use when that architecture is selected.
 * `image_arm64` The ARM64 specific image to use when that architecture is selected.
 * `minimum_date` If the created timestamp of the image is older then this, force an update of the image.
 	- This allows project maintainers to automatically notified canon (and canon users) when an update is needed for a project.
 	- Obtain with `docker inspect -f '{{ .Created }}' IMAGE_NAME`
 * `persistent` A boolean that determines if a profile should be run in persistent mode. (See [Persistent Mode](#persistent-mode) below.)
+	- Defaults to `false`
 * `ssh` A boolean, determining if SSH helpers should be set up. (See SSH below.) Can be overridden with `-ssh`
+	- Defaults to `true`
 * `netrc` A boolean, determining if the user's .netrc file should be (read-only) mounted to the container. Can be overridden with `-netrc`
-* `user` The user account (within the image) to enter the container as.
-	- This user's UID will be changed to match the external user's UID.
-* `group` The group account (within the image) to enter the container as. Can be overriden by `-user`
-	- This group's GID will be changed to match the external user's GID. Can be overriden by `-group`
+	- Defaults to `true`
+* `user` The user account (within the image) to enter the container as. Can be overriden by `-user`
+	- This user's UID will be changed to match the external user's UID, or created if it does not exist.
+	- defaults to `canon`
+* `group` The group account (within the image) to enter the container as. Can be overriden by `-group`
+	- This group's GID will be changed to match the external user's GID, or created if it does not exist.
+	- Defaults to `canon`
 * `path` The path to the "root" (top level) folder, which will be mounted at `/host` within the container.
 	- This also sets which profile should be auto-selected when running canon in/beneath that location on the host.
 	- This should **never** be used within project configs, as the path will be set automatically at runtime for project-based profiles.
@@ -101,8 +103,12 @@ By default, canon will launch a new docker container, and start a shell inside i
 is removed, so the next startup will be another "clean room." This can have drawbacks though, as it prevents multiple shells from being
 opened in the same environment, and can make build/download caching inside the container somewhat useless. As an alternate mode, a profile
 can be set with the "persistent" value set to true. In this mode, any canon executions that use that profile will be run in the same
-container. Exiting a shell (or a command ending) will not terminate the container either. Users will need to run: `canon terminate`
-This will terminate the container for the current profile. Optionally `-a` can be appended to terminate ALL canon-managed containers.
+container. Exiting a shell (or a command ending) will not terminate the container either.
+
+### Terminating persistent containers
+
+Run: `canon terminate` to terminate the container that would currently be used.
+Optionally `-a` can be appended to terminate ALL canon-managed containers.
 
 ## Emulation
 
@@ -113,3 +119,27 @@ on the MacOS versions of docker. For Linux, qemu can be installed and configured
 `docker run --rm --privileged multiarch/qemu-user-static --reset -p yes`
 
 Note: This will only last until the next reboot of the Linux system. See https://github.com/multiarch/qemu-user-static for more details.
+
+## Updates
+
+By default, canon will check for an updated image at startup once every update_interval. You can force an update with `canon update` or
+you can update all images (that can be found from configs and your current working directory) with `canon update -a`.
+If you have trouble, or want to reset the update times, remove the cache file(s) in `~/.cache/canon/`
+
+## Creating Custom Docker Images
+
+Nearly any linux image will work, provided it has a few basic utilities installed.
+* bash
+* useradd
+* usermod
+* groupadd
+* groupmod
+* getent
+* chown
+* sudo (optional, user will be added to sudoers for password-less root)
+* ssh/ssh-add (optional, only needed when using ssh agent forwarding)
+* git (optional, sets up a helper in the internal user profile for github redirects through ssh)
+
+If custom toolchains/paths/configs, etc are needed, you should set up a normal user account in the docker configured as needed, then set
+the user/group settings in the canon profile to point to it. Then whatever external account you call canon with will be mapped to that user
+internally.

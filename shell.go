@@ -19,7 +19,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-func shell(args []string) (err error) {
+func shell(args []string) error {
 	if len(args) < 1 {
 		return errors.New("shell needs at least one argument to run")
 	}
@@ -30,13 +30,17 @@ func shell(args []string) (err error) {
 	}
 
 	var sshSock string
-	if activeProfile.Ssh {
+	if activeProfile.SSH {
 		if runtime.GOOS == "darwin" {
 			// Docker has magic paths for this on Mac
 			sshSock = "/run/host-services/ssh-auth.sock"
 		} else {
 			sshSock, _ = os.LookupEnv("SSH_AUTH_SOCK")
 		}
+	}
+
+	if err := checkUpdate(activeProfile, false); err != nil {
+		return err
 	}
 
 	var containerID string
@@ -47,7 +51,18 @@ func shell(args []string) (err error) {
 		}
 	}
 
-	if containerID == "" {
+	if containerID != "" {
+		needsUpdate, err := checkContainerImageVersion(ctx, cli, containerID)
+		if err != nil {
+			return err
+		}
+		if needsUpdate {
+			fmt.Print(
+				"WARNING: Persistent container is using an out of date image.\n" +
+					"WARNING: Please terminate and restart to use the new version.\n\n",
+			)
+		}
+	} else {
 		containerID, err = startContainer(ctx, cli, activeProfile, sshSock)
 		if err != nil {
 			return err
@@ -73,6 +88,9 @@ func shell(args []string) (err error) {
 	}
 
 	execResp, err := cli.ContainerExecCreate(ctx, containerID, execCfg)
+	if err != nil {
+		return err
+	}
 	execID := execResp.ID
 
 	hijack, err := cli.ContainerExecAttach(ctx, execID, types.ExecStartCheck{Tty: execCfg.Tty})
@@ -81,7 +99,7 @@ func shell(args []string) (err error) {
 	}
 	defer hijack.Close()
 
-	//keep the TTY the same size in the container as on the host
+	// keep the TTY the same size in the container as on the host
 	err = resizeTty(ctx, cli, execID)
 	if err != nil {
 		// for very fast commands, the resize may happen too early or too late
@@ -159,7 +177,7 @@ func monitorTtySize(ctx context.Context, cli *client.Client, execID string) {
 	signal.Notify(sigchan, syscall.SIGWINCH)
 	go func() {
 		for range sigchan {
-			// error is ignored, as there's no way to salvage it if it occurs, and we DO want it to try again on the next resize
+			//nolint:errcheck // no way to salvage error, and we DO want it to try again on the next resize
 			resizeTty(ctx, cli, execID)
 		}
 	}()

@@ -26,10 +26,14 @@ type ImageDef struct {
 	Platform string
 }
 
+// MarshalYAML marshals yaml
+//
+//nolint:unparam
 func (i ImageDef) MarshalYAML() (interface{}, error) {
 	return i.Image + "|" + i.Platform, nil
 }
 
+// UnmarshalYAML unmarshals yaml.
 func (i *ImageDef) UnmarshalYAML(n *yaml.Node) error {
 	splits := strings.Split(n.Value, "|")
 	if len(splits) != 2 {
@@ -87,7 +91,7 @@ func getLock() (*os.File, error) {
 	}
 	lockFile := filepath.Join(home, lockRelPath)
 
-	file, err := os.OpenFile(lockFile, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(lockFile, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, err
 	}
@@ -114,15 +118,22 @@ func dropLock(file *os.File) error {
 }
 
 // Updates the image for the active (default or specified) profile, and (optionally) all known profiles.
-func cmdUpdate(curProfile *Profile, all bool) error {
+func checkUpdate(curProfile *Profile, all bool) error {
 	// Used to de-dupe
 	imagesMap := make(map[ImageDef]bool)
 
+	lock, err := getLock()
+	if err != nil {
+		return err
+	}
 	checkData, err := readCheckData()
 	if err != nil {
 		return err
 	}
-
+	err = dropLock(lock)
+	if err != nil {
+		return err
+	}
 	// add current profile's image
 	for _, i := range checkImageDate(curProfile, checkData) {
 		imagesMap[i] = true
@@ -168,12 +179,13 @@ func checkImageDate(profile *Profile, checkData ImageCheckData) []ImageDef {
 	var imageCandidates, images []ImageDef
 
 	// Dual arch profile
-	if profile.ImageAMD64 != "" && profile.ImageARM64 != "" {
+	switch {
+	case profile.ImageAMD64 != "" && profile.ImageARM64 != "":
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageAMD64, Platform: "linux/amd64"})
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARM64, Platform: "linux/arm64"})
-	} else if profile.Image != "" {
+	case profile.Image != "":
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image, Platform: profile.Arch})
-	} else {
+	default:
 		return images
 	}
 
@@ -209,8 +221,8 @@ func (data *ImageCheckData) write() error {
 		return err
 	}
 	checkDataFilePath := filepath.Join(home, checkDataRelPath)
-	if err := os.MkdirAll(filepath.Dir(checkDataFilePath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(checkDataFilePath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(checkDataFilePath, out, 0644)
+	return os.WriteFile(checkDataFilePath, out, 0o644)
 }

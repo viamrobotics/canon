@@ -1,4 +1,3 @@
----
 canon-default:
- image_amd64: "ghcr.io/viamrobotics/canon:amd64"
- image_arm64: "ghcr.io/viamrobotics/canon:arm64"
+    image_amd64: "ghcr.io/viamrobotics/canon:amd64"
+    image_arm64: "ghcr.io/viamrobotics/canon:arm64"

@@ -9,9 +9,13 @@ import (
 var defaultArgs = []string{"bash", "-l"}
 
 func main() {
-	parseConfigs()
+	err := parseConfigs()
+	if err != nil {
+		checkErr(err)
+		return
+	}
 	args := flag.Args()
-	if len(args) <= 0 {
+	if len(args) == 0 {
 		checkErr(shell(defaultArgs))
 	} else {
 		switch args[0] {
@@ -20,7 +24,7 @@ func main() {
 		case "config":
 			showConfig(activeProfile)
 		case "update":
-			checkErr(cmdUpdate(activeProfile, checkAll(args)))
+			checkErr(checkUpdate(activeProfile, checkAll(args)))
 		case "terminate":
 			checkErr(terminate(activeProfile, checkAll(args)))
 		case "--":
@@ -41,14 +45,4 @@ func checkErr(err error) {
 	if err2 != nil {
 		fmt.Printf("Error encountered printing to stderr: %s\nOriginal Error: %s", err2, err)
 	}
-}
-
-func checkAll(args []string) bool {
-	all := false
-	if len(args) >= 2 {
-		if args[1] == "-a" || args[1] == "-all" || args[1] == "--all" {
-			all = true
-		}
-	}
-	return all
 }

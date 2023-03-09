@@ -1,0 +1,33 @@
+# This would provide user-level config as '~/.config/canon.yaml'
+defaults: # applied BEFORE any other configs
+    profile: myprofile # this switches to a named profile when a project-profile isn't detected
+    update_interval: 24h0m0s
+    persistent: false
+    ssh: true
+    netrc: false
+
+# individual profiles override any project-specific settings, or create new profiles for projects that don't have a .canon.yaml
+project1:
+    image_amd64: ghcr.io/viamrobotics/canon:amd64
+    image_arm64: ghcr.io/viamrobotics/canon:arm64
+    minimum_date: 2023-03-06T00:15:26.271839721-05:00
+    update_interval: 72h0m0s
+    user: testbot
+    group: testbot
+    path: /home/user1/source/proj1
+
+project2: # most project profiles should be overriding settings in a specific project
+    image: ubuntu:22.04  # will override amd64/arm64 specific images (if provided by the project config)
+    user: godzilla
+    group: kaiju
+    path: /home/user1/source/proj2
+
+myprofile:
+    image: ubuntu:latest
+    arch: amd64
+
+myarmprofile: # profiled can be quickly switched to via CLI and the --profile arg
+    image: ubuntu:20.10
+    arch: arm64
+    ssh: false
+    netrc: false

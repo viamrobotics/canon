@@ -44,7 +44,7 @@ func stopContainer(ctx context.Context, cli *client.Client, containerID string) 
 		}
 	case status := <-statusCh:
 		if status.Error != nil && status.Error.Message != "" {
-			return fmt.Errorf("Error waiting for container stop: %s\n", status.Error.Message)
+			return fmt.Errorf("error waiting for container stop: %s", status.Error.Message)
 		}
 	}
 	return nil
@@ -55,13 +55,13 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		Image:        profile.Image,
 		AttachStdout: true,
 	}
-	if profile.Ssh {
+	if profile.SSH {
 		cfg.Env = []string{"CANON_SSH=true"}
 	}
 	hostCfg := &container.HostConfig{AutoRemove: true}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
-	if profile.Ssh {
+	if profile.SSH {
 		if sshSock != "" {
 			mnt := mount.Mount{
 				Type:   "bind",
@@ -88,7 +88,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
 	}
 
-	if profile.Netrc {
+	if profile.NetRC {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
@@ -127,19 +127,19 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 
 	cfg.Labels = map[string]string{
 		"com.viam.canon.type":         "one-shot",
-		"com.viam.canon.profile":      profile.Name,
+		"com.viam.canon.profile":      profile.name,
 		"com.viam.canon.profile-data": string(profYaml),
 	}
 	if profile.Persistent {
 		cfg.Labels["com.viam.canon.type"] = "persistent"
 	}
-	name := fmt.Sprintf("canon-%s-%x", profile.Name, rand.Uint32())
+	name := fmt.Sprintf("canon-%s-%x", profile.name, rand.Uint32())
 
 	// fill out the entrypoint template
-	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_USER__", profile.User, -1)
-	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_GROUP__", profile.Group, -1)
-	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_UID__", fmt.Sprint(os.Getuid()), -1)
-	canonSetupScript = strings.Replace(canonSetupScript, "__CANON_GID__", fmt.Sprint(os.Getgid()), -1)
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_USER__", profile.User)
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_GROUP__", profile.Group)
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_UID__", fmt.Sprint(os.Getuid()))
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_GID__", fmt.Sprint(os.Getgid()))
 	cfg.Entrypoint = []string{}
 	cfg.Cmd = []string{"bash", "-c", canonSetupScript}
 
@@ -173,6 +173,9 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	}
 
 	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true})
+	if err != nil {
+		return "", err
+	}
 	defer hijack.Close()
 
 	scanner := bufio.NewScanner(hijack.Reader)
@@ -193,7 +196,7 @@ func terminate(profile *Profile, all bool) error {
 	if all {
 		f.Add("label", "com.viam.canon.profile")
 	} else {
-		f.Add("label", "com.viam.canon.profile="+profile.Name)
+		f.Add("label", "com.viam.canon.profile="+profile.name)
 	}
 	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
 	if err != nil {
@@ -213,13 +216,13 @@ func terminate(profile *Profile, all bool) error {
 func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Profile) (string, error) {
 	f := filters.NewArgs()
 	f.Add("label", "com.viam.canon.type=persistent")
-	f.Add("label", "com.viam.canon.profile="+profile.Name)
+	f.Add("label", "com.viam.canon.profile="+profile.name)
 	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: f})
 	if err != nil {
 		return "", err
 	}
 	if len(containers) > 1 {
-		return "", fmt.Errorf("more than one container is running for profile %s, please terminate all containers and retry", profile.Name)
+		return "", fmt.Errorf("more than one container is running for profile %s, please terminate all containers and retry", profile.name)
 	}
 	if len(containers) < 1 {
 		return "", nil
@@ -232,15 +235,34 @@ func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Pr
 
 	profYaml, ok := containers[0].Labels["com.viam.canon.profile-data"]
 	if !ok {
-		return "", fmt.Errorf("no profile data on persistent container for %s, please terminate all containers and retry", profile.Name)
+		return "", fmt.Errorf("no profile data on persistent container for %s, please terminate all containers and retry", profile.name)
 	}
 
 	if profYaml != string(curProfYaml) {
 		return "", fmt.Errorf(
 			"existing container settings for %s don't match current settings, please terminate all containers and retry",
-			profile.Name,
+			profile.name,
 		)
 	}
 
 	return containers[0].ID, nil
+}
+
+func checkContainerImageVersion(ctx context.Context, cli *client.Client, containerID string) (bool, error) {
+	info, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return false, err
+	}
+
+	containerImageID := info.Image
+	imageName := info.Config.Image
+	imageInfo, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		return false, err
+	}
+
+	if imageInfo.ID == containerImageID {
+		return false, nil
+	}
+	return true, nil
 }

@@ -23,7 +23,7 @@ getent passwd $CANON_USER > /dev/null 2>&1
 if [[ $? -eq 0 ]]; then
 	usermod --non-unique --uid $CANON_UID $CANON_USER >/dev/null 2>&1
 else
-	useradd --non-unique --uid $CANON_UID --gid $CANON_GID $CANON_USER >/dev/null 2>&1
+	useradd --create-home --non-unique --uid $CANON_UID --gid $CANON_GID $CANON_USER >/dev/null 2>&1
 fi
 if ! grep -qs $CANON_USER /etc/sudoers; then
   echo "$CANON_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
