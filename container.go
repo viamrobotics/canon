@@ -127,13 +127,15 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 
 	cfg.Labels = map[string]string{
 		"com.viam.canon.type":         "one-shot",
-		"com.viam.canon.profile":      profile.name,
+		"com.viam.canon.profile":      profile.name + "/" + profile.Arch,
 		"com.viam.canon.profile-data": string(profYaml),
 	}
 	if profile.Persistent {
 		cfg.Labels["com.viam.canon.type"] = "persistent"
 	}
-	name := fmt.Sprintf("canon-%s-%x", profile.name, rand.Uint32())
+
+	rando := rand.New(rand.NewSource(time.Now().UnixNano()))
+	name := fmt.Sprintf("canon-%s-%x", profile.name, rando.Uint32())
 
 	// fill out the entrypoint template
 	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_USER__", profile.User)
@@ -196,7 +198,7 @@ func terminate(profile *Profile, all bool) error {
 	if all {
 		f.Add("label", "com.viam.canon.profile")
 	} else {
-		f.Add("label", "com.viam.canon.profile="+profile.name)
+		f.Add("label", "com.viam.canon.profile="+profile.name+"/"+profile.Arch)
 	}
 	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
 	if err != nil {
@@ -216,7 +218,7 @@ func terminate(profile *Profile, all bool) error {
 func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Profile) (string, error) {
 	f := filters.NewArgs()
 	f.Add("label", "com.viam.canon.type=persistent")
-	f.Add("label", "com.viam.canon.profile="+profile.name)
+	f.Add("label", "com.viam.canon.profile="+profile.name+"/"+profile.Arch)
 	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: f})
 	if err != nil {
 		return "", err
