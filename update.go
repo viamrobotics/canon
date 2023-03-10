@@ -91,6 +91,10 @@ func getLock() (*os.File, error) {
 	}
 	lockFile := filepath.Join(home, lockRelPath)
 
+	if err := os.MkdirAll(filepath.Dir(lockFile), 0o755); err != nil {
+		return nil, err
+	}
+
 	file, err := os.OpenFile(lockFile, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, err
