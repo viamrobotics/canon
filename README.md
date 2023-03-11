@@ -143,3 +143,12 @@ Nearly any linux image will work, provided it has a few basic utilities installe
 If custom toolchains/paths/configs, etc are needed, you should set up a normal user account in the docker configured as needed, then set
 the user/group settings in the canon profile to point to it. Then whatever external account you call canon with will be mapped to that user
 internally.
+
+# Troubleshooting
+
+A common issue is that during initial startup, it may take 90 seconds or more if the canon user (in the container) owns a LOT of
+files. To avoid file permissions uses, the internal user's UID is modified, but this requires modifying the ownership of any files that
+belong to that user. If you have an image that contains of lot of data in the user's home directory, this can take a while.
+
+The workaround for this is to enable persistent profiles, so that only the first startup of a container has this delay. Subsequent calls
+into the container will be nearly instant afterwards.

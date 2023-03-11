@@ -263,35 +263,33 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 		return "", err
 	}
 
-	for pName, p := range cfg {
-		prof, ok := p.(map[string]interface{})
-		if !ok || prof == nil {
-			continue
-		}
-		path, ok := prof["path"]
-		if !ok {
-			continue
-		}
-		pathStr, ok := path.(string)
-		if !ok {
-			continue
-		}
+	for {
+		for pName, p := range cfg {
+			prof, ok := p.(map[string]interface{})
+			if !ok || prof == nil {
+				continue
+			}
+			path, ok := prof["path"]
+			if !ok {
+				continue
+			}
+			pathStr, ok := path.(string)
+			if !ok {
+				continue
+			}
 
-		hostpath, err := filepath.Abs(pathStr)
-		if err != nil {
-			return "", err
-		}
-
-		wd := cwd
-		for {
-			if hostpath == wd {
+			hostpath, err := filepath.Abs(pathStr)
+			if err != nil {
+				return "", err
+			}
+			if hostpath == cwd {
 				return pName, nil
 			}
-			if wd == string(os.PathSeparator) {
-				break
-			}
-			wd = filepath.Dir(wd)
 		}
+		if cwd == string(os.PathSeparator) {
+			break
+		}
+		cwd = filepath.Dir(cwd)
 	}
 
 	d, ok := cfg["defaults"]

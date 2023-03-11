@@ -6,9 +6,11 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,7 +42,9 @@ func stopContainer(ctx context.Context, cli *client.Client, containerID string) 
 	select {
 	case err := <-errCh:
 		if err != nil {
-			return err
+			if !strings.Contains(err.Error(), "No such container") {
+				return err
+			}
 		}
 	case status := <-statusCh:
 		if status.Error != nil && status.Error.Message != "" {
@@ -55,9 +59,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		Image:        profile.Image,
 		AttachStdout: true,
 	}
-	if profile.SSH {
-		cfg.Env = []string{"CANON_SSH=true"}
-	}
+
 	hostCfg := &container.HostConfig{AutoRemove: true}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
@@ -76,16 +78,25 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 			return "", err
 		}
 		userSSHDir := filepath.Join(home, ".ssh")
-		// TODO check inside the container for the actual home directory
-		canonSSHDir := "/home/" + profile.User + "/.ssh"
 
-		mnt := mount.Mount{
-			Type:     "bind",
-			Source:   userSSHDir,
-			Target:   canonSSHDir,
-			ReadOnly: true,
+		_, err = os.Stat(userSSHDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", err
 		}
-		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+
+		if err == nil {
+			// TODO check inside the container for the actual home directory
+			canonSSHDir := "/home/" + profile.User + "/.ssh"
+
+			mnt := mount.Mount{
+				Type:     "bind",
+				Source:   userSSHDir,
+				Target:   canonSSHDir,
+				ReadOnly: true,
+			}
+			hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+			cfg.Env = []string{"CANON_SSH=true"}
+		}
 	}
 
 	if profile.NetRC {
@@ -94,17 +105,30 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 			return "", err
 		}
 		userNetRC := filepath.Join(home, ".netrc")
-		canonNetRC := "/home/" + profile.User + "/.netrc"
-		mnt := mount.Mount{
-			Type:     "bind",
-			Source:   userNetRC,
-			Target:   canonNetRC,
-			ReadOnly: true,
+
+		_, err = os.Stat(userNetRC)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", err
 		}
-		hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+
+		if err == nil {
+			canonNetRC := "/home/" + profile.User + "/.netrc"
+			mnt := mount.Mount{
+				Type:     "bind",
+				Source:   userNetRC,
+				Target:   canonNetRC,
+				ReadOnly: true,
+			}
+			hostCfg.Mounts = append(hostCfg.Mounts, mnt)
+		}
 	}
 
 	if profile.Path == string(os.PathSeparator) {
+		if runtime.GOOS == "darwin" {
+			return "", errors.New("no profile found that contains the current directory, " +
+				"and the root fs (/) cannot be directly mounted on MacOS")
+		}
+
 		fmt.Fprintf(os.Stderr,
 			"WARNING: profile path is root (%s) so mounting entire host system to %s\n",
 			string(os.PathSeparator),
@@ -166,9 +190,8 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		fmt.Fprintf(os.Stderr, "Warning during container creation: %s\n", warn)
 	}
 
+	fmt.Printf("Container Name: %s\n", name)
 	containerID := resp.ID
-	fmt.Printf("Container ID: %s\n", containerID)
-
 	err = cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
 	if err != nil {
 		return containerID, err

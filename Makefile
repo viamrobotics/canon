@@ -1,5 +1,5 @@
 bin/canon: *.go go.mod go.sum canon_setup.sh
-	go build -o bin/canon .
+	go build -tags osusergo,netgo -o bin/canon .
 
 bin/golangci-lint:
 	GOBIN=`pwd`/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
