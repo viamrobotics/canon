@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -71,7 +71,8 @@ func update(images ...ImageDef) error {
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(os.Stdout, resp)
+		defer resp.Close()
+		err = jsonmessage.DisplayJSONMessagesStream(resp, os.Stdout, os.Stdout.Fd(), true, nil)
 		if err != nil {
 			return err
 		}
