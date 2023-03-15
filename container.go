@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.uber.org/multierr"
 	"gopkg.in/yaml.v3"
@@ -58,6 +60,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	cfg := &container.Config{
 		Image:        profile.Image,
 		AttachStdout: true,
+		AttachStderr: true,
 	}
 
 	hostCfg := &container.HostConfig{AutoRemove: true}
@@ -190,22 +193,35 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		fmt.Fprintf(os.Stderr, "Warning during container creation: %s\n", warn)
 	}
 
-	fmt.Printf("Container Name: %s\n", name)
+	fmt.Printf("Started new container: %s\n", name)
 	containerID := resp.ID
-	err = cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
-	if err != nil {
-		return containerID, err
-	}
 
-	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true})
+	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true, Stderr: true})
 	if err != nil {
 		return "", err
 	}
 	defer hijack.Close()
 
-	scanner := bufio.NewScanner(hijack.Reader)
+	err = cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
+	if err != nil {
+		return containerID, err
+	}
+
+	// docker attach multiplexes stdout and stderr with a custom byte stream, we have to de-multiplex to strip the extra bytes
+	pipeR, pipeW := io.Pipe()
+	bufR := bufio.NewReader(pipeR)
+	go func() {
+		_, err := stdcopy.StdCopy(pipeW, pipeW, hijack.Reader)
+		if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+			checkErr(err)
+		}
+	}()
+
+	scanner := bufio.NewScanner(bufR)
 	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "CANON_READY") {
+		output := scanner.Text()
+		fmt.Println(output)
+		if strings.Contains(output, "CANON_READY") {
 			break
 		}
 	}
