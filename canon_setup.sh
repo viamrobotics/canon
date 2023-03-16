@@ -62,7 +62,7 @@ if getent passwd $CANON_USER >/dev/null; then
   echo "# Setting user UID to match profile"
   (set -x; usermod --uid $CANON_UID $CANON_USER)
 else
-  echo "Creating user per profile"
+  echo "# Creating user per profile"
 	(set -x; useradd --uid $CANON_UID --gid $CANON_GID $CANON_USER)
 fi
 
@@ -72,7 +72,7 @@ if which sudo >/dev/null; then
     (set -x; echo "$CANON_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers)
   fi
 else
-  echo "Setting root password to \"$CANON_USER\""
+  echo "# Setting root password to \"$CANON_USER\""
   (set -x; echo -e "$CANON_USER\n$CANON_USER" | passwd root)
 fi
 

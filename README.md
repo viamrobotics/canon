@@ -126,19 +126,18 @@ By default, canon will check for an updated image at startup once every update_i
 you can update all images (that can be found from configs and your current working directory) with `canon update -a`.
 If you have trouble, or want to reset the update times, remove the cache file(s) in `~/.cache/canon/`
 
+Note that canon does *not* check for updates to itself, so you should occasionally reinstall to make sure you have the latest version.
+
 ## Creating Custom Docker Images
 
 Nearly any linux image will work, provided it has a few basic utilities installed.
 * bash
-* useradd
-* usermod
-* groupadd
-* groupmod
-* getent
-* chown
+* passwd (passwd, useradd, usermod, groupadd, groupmod)
+* libc-bin (getent)
+* grep
+* coreutils (cat, chown, cut)
 * sudo (optional, user will be added to sudoers for password-less root)
-* ssh/ssh-add (optional, only needed when using ssh agent forwarding)
-* git (optional, sets up a helper in the internal user profile for github redirects through ssh)
+* ssh (ssh, ssh-add) (optional, only needed when using ssh agent forwarding)
 
 If custom toolchains/paths/configs, etc are needed, you should set up a normal user account in the docker configured as needed, then set
 the user/group settings in the canon profile to point to it. Then whatever external account you call canon with will be mapped to that user
@@ -146,9 +145,33 @@ internally.
 
 # Troubleshooting
 
-A common issue is that during initial startup, it may take 90 seconds or more if the canon user (in the container) owns a LOT of
-files. To avoid file permissions uses, the internal user's UID is modified, but this requires modifying the ownership of any files that
-belong to that user. If you have an image that contains of lot of data in the user's home directory, this can take a while.
+Some basic steps to try when encountering various problems are below.
+
+## Update canon
+
+For almost any problem, it's always good to make sure you're running the latest version. There is no specific update procedure, just run
+the install command again to get the latest version.
+
+## Terminate persistent images
+
+Stop (terminate) running persistent containers so they can be restarted. `canon terminate -a`
+
+## Wipe the cache
+
+If you have issues with updates, try clearing the update timestamp data. `rm -r ~/.cache/canon`
+
+## Check Docker settings
+
+If you're having trouble within Docker containers, and especially on MacOS, make sure you've allocated enough resources in the Docker
+settings. Similarly, make sure Docker hasn't run out of disk space. Try running `system df` to see your Docker disk usage, and use
+`docker system prune` to clean up, optionally with `-a` and/or `--volumes` depends on how much you want removed. Be careful, these commands
+can and will remove non-canon related images, containers, and volumes as well.
+
+## Hanging or slow setup of a new container
+
+A common issue is that during initial startup, it may take several seconds to several minutes or more if the canon user (in the container)
+owns a LOT of files. To avoid file permissions uses, the internal user's UID is modified, but this requires modifying the ownership of any
+files that belong to that user. If you have an image that contains of lot of data in the user's home directory, this can take a while.
 
 The workaround for this is to enable persistent profiles, so that only the first startup of a container has this delay. Subsequent calls
 into the container will be nearly instant afterwards.
