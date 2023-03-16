@@ -162,14 +162,13 @@ func findProjectConfig() (string, error) {
 	for {
 		path := filepath.Join(cwd, ".canon.yaml")
 		_, err = os.Stat(path)
-		if err != nil || cwd == string(os.PathSeparator) {
+		if err == nil {
+			return path, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) || cwd == string(os.PathSeparator) {
 			return "", err
 		}
-		if errors.Is(err, fs.ErrNotExist) {
-			cwd = filepath.Dir(cwd)
-		} else {
-			return path, err
-		}
+		cwd = filepath.Dir(cwd)
 	}
 }
 
@@ -347,13 +346,13 @@ func swapArchImage(profile *Profile) {
 }
 
 func showConfig(profile *Profile) {
-	ret, err := yaml.Marshal(map[string]Profile{profile.name: *profile})
+	ret, err := yaml.Marshal(mergedCfg)
 	checkErr(err)
-	fmt.Printf("Active, merged profile (including builtin/user defaults and cli arguments)\n---\n%s\n\n\n", ret)
+	fmt.Printf("# All explicitly parsed/merged config files (without builtin/default/cli)\n---\n%s\n\n", ret)
 
-	ret, err = yaml.Marshal(mergedCfg)
+	ret, err = yaml.Marshal(map[string]Profile{profile.name: *profile})
 	checkErr(err)
-	fmt.Printf("All explicitly parsed/merged config files (without builtin/default/cli)\n---\n%s\n", ret)
+	fmt.Printf("# Active, merged profile (including builtin/user defaults and cli arguments)\n---\n%s\n", ret)
 }
 
 func mapDecode(iface interface{}, p *Profile) error {

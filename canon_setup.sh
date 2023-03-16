@@ -43,14 +43,10 @@ if getent passwd $CANON_UID >/dev/null; then
   fi
 fi
 
-
-if getent passwd $CANON_USER >/dev/null; then
-  CANON_HOME=$(getent passwd $CANON_USER | cut -d: -f6)
-  echo "# Fixing ownership on files in $CANON_HOME"
-  echo "# This may take a while depending on the number of files."
-  (set -x; chown -Rf $CANON_UID:$CANON_GID $CANON_HOME)
-fi
-
+echo "# Fixing ownership on files in $CANON_HOME"
+echo "# This may take a while depending on the number of files."
+(set -x; mkdir -p "/home/$CANON_USER")
+(set -x; chown -Rf $CANON_UID:$CANON_GID "/home/$CANNON_USER")
 
 # group setup
 if getent group $CANON_GROUP >/dev/null; then
@@ -70,9 +66,14 @@ else
 	(set -x; useradd --uid $CANON_UID --gid $CANON_GID $CANON_USER)
 fi
 
-if ! grep -qs $CANON_USER /etc/sudoers; then
-  echo "Adding $CANON_USER to /etc/sudoers"
-  (set -x; echo "$CANON_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers)
+if which sudo >/dev/null; then
+  if ! grep -qs $CANON_USER /etc/sudoers; then
+    echo "Adding $CANON_USER to /etc/sudoers"
+    (set -x; echo "$CANON_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers)
+  fi
+else
+  echo "Setting root password to \"$CANON_USER\""
+  (set -x; echo -e "$CANON_USER\n$CANON_USER" | passwd root)
 fi
 
 if [[ -e /run/host-services/ssh-auth.sock ]]; then
