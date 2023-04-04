@@ -3,7 +3,7 @@ module github.com/viamrobotics/canon
 go 1.19
 
 require (
-	github.com/docker/docker v20.10.23+incompatible
+	github.com/docker/docker v20.10.24+incompatible
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587
 	github.com/opencontainers/image-spec v1.0.2
