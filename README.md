@@ -1,6 +1,3 @@
-# !!! Beta Software !!!
-Note, this software is new and currently under beta testing. Use at your own risk.
-
 # Canon
 
 A CLI utility for managing docker-based, canonical development environments. Just run `canon` and you'll be instantly dropped into a shell
@@ -16,14 +13,24 @@ that priviate git repositories can still be accessed.
 
 ## Installation
 
+### Docker Requirements
+
+Make sure you have a recent version of Docker installed. If unsure, run `docker version` to verify your system is working.
+For Docker install instructions, see https://docs.docker.com/engine/install/
+
+### Homebrew
+
+`brew install viamrobotics/brews/canon`
+
+### Direct Install
+
+Requires Go 1.19 or newer to be installed.
+
 `go install github.com/viamrobotics/canon@latest`
 
 Make sure your GOBIN is in your PATH. If not, you can add it with something like:
 `export PATH="$PATH:~/go/bin"`
 Note: This path may vary. See https://go.dev/ref/mod#go-install for details.
-
-Make sure you have Docker installed. If unsure, run `docker version` to verify your system is working.
-For Docker install instructions, see https://docs.docker.com/engine/install/
 
 ## Usage
 
@@ -94,8 +101,10 @@ Profiles are defined with the following fields:
 * `path` The path to the "root" (top level) folder, which will be mounted at `/host` within the container.
 	- This also sets which profile should be auto-selected when running canon in/beneath that location on the host.
 	- This should **never** be used within project configs, as the path will be set automatically at runtime for project-based profiles.
+		+ See `default` below for when a project config contains multiple profiles.
 * `update_interval` A duration (in Go format) that determines how often to check for updates to an image.
 	- Defaults to `24h0m0s`
+* `default` A boolean to indicate the prefered profile when multiple profiles share the same path, such as a project with multiple profiles.
 
 ## Persistent Mode
 

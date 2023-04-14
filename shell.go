@@ -24,7 +24,7 @@ func shell(args []string) error {
 		return errors.New("shell needs at least one argument to run")
 	}
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
@@ -39,9 +39,7 @@ func shell(args []string) error {
 		}
 	}
 
-	if err := checkUpdate(activeProfile, false); err != nil {
-		return err
-	}
+	checkErr(checkUpdate(activeProfile, false))
 
 	var containerID string
 	if activeProfile.Persistent {

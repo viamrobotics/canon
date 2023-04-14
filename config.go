@@ -22,6 +22,7 @@ import (
 
 type Profile struct {
 	name           string
+	Default        bool          `yaml:"default" mapstructure:"default"`
 	Image          string        `yaml:"image" mapstructure:"image"`
 	ImageAMD64     string        `yaml:"image_amd64" mapstructure:"image_amd64"`
 	ImageARM64     string        `yaml:"image_arm64" mapstructure:"image_arm64"`
@@ -262,6 +263,8 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 		return "", err
 	}
 
+	candidates := map[string]bool{}
+
 	for {
 		for pName, p := range cfg {
 			prof, ok := p.(map[string]interface{})
@@ -282,13 +285,56 @@ func getDefaultProfile(cfg map[string]interface{}) (string, error) {
 				return "", err
 			}
 			if hostpath == cwd {
-				return pName, nil
+				candidates[pName] = false
+				isDef, ok := prof["default"]
+				if !ok {
+					continue
+				}
+				defBool, ok := isDef.(bool)
+				if !ok {
+					continue
+				}
+				if defBool {
+					candidates[pName] = true
+				}
 			}
 		}
-		if cwd == string(os.PathSeparator) {
+		if cwd == string(os.PathSeparator) || len(candidates) > 0 {
 			break
 		}
 		cwd = filepath.Dir(cwd)
+	}
+
+	if len(candidates) == 1 {
+		for p := range candidates {
+			return p, nil
+		}
+	}
+
+	if len(candidates) > 1 {
+		var numDefaults int
+		var firstDef string
+		for prof, isDef := range candidates {
+			if isDef {
+				numDefaults++
+				if firstDef == "" {
+					firstDef = prof
+				}
+			}
+		}
+		if numDefaults != 1 {
+			keys := []string{}
+			for k := range candidates {
+				keys = append(keys, k)
+			}
+			if numDefaults == 0 {
+				return "", fmt.Errorf("multiple profiles %s match the current path, and none have the 'default' value set", keys)
+			}
+			if numDefaults > 1 {
+				return "", fmt.Errorf("multiple profiles %s match the current path and have the 'default' value set", keys)
+			}
+		}
+		return firstDef, nil
 	}
 
 	d, ok := cfg["defaults"]

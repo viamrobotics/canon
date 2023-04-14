@@ -33,8 +33,7 @@ var canonSetupScript string
 var canonMountPoint = "/host"
 
 func stopContainer(ctx context.Context, cli *client.Client, containerID string) error {
-	stopTimeout := time.Second * 10
-	err := cli.ContainerStop(ctx, containerID, &stopTimeout)
+	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
 	if err != nil {
 		return err
 	}
@@ -229,7 +228,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 }
 
 func terminate(profile *Profile, all bool) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
@@ -246,10 +245,9 @@ func terminate(profile *Profile, all bool) error {
 	if len(containers) > 1 && !all {
 		return errors.New("multiple matching containers found, please retry with '--all' option")
 	}
-	timeout := time.Second * 5
 	for _, c := range containers {
 		fmt.Printf("terminating %s\n", c.Labels["com.viam.canon.profile"])
-		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, &timeout))
+		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, container.StopOptions{}))
 	}
 	return err
 }
