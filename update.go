@@ -123,7 +123,7 @@ func dropLock(file *os.File) error {
 }
 
 // Updates the image for the active (default or specified) profile, and (optionally) all known profiles.
-func checkUpdate(curProfile *Profile, all bool) error {
+func checkUpdate(curProfile *Profile, all, force bool) error {
 	// Used to de-dupe
 	imagesMap := make(map[ImageDef]bool)
 
@@ -140,7 +140,7 @@ func checkUpdate(curProfile *Profile, all bool) error {
 		return err
 	}
 	// add current profile's image
-	for _, i := range checkImageDate(curProfile, checkData) {
+	for _, i := range checkImageDate(curProfile, checkData, force) {
 		imagesMap[i] = true
 	}
 
@@ -165,7 +165,7 @@ func checkUpdate(curProfile *Profile, all bool) error {
 				return err
 			}
 
-			for _, i := range checkImageDate(prof, checkData) {
+			for _, i := range checkImageDate(prof, checkData, force) {
 				imagesMap[i] = true
 			}
 		}
@@ -180,7 +180,7 @@ func checkUpdate(curProfile *Profile, all bool) error {
 	return update(images...)
 }
 
-func checkImageDate(profile *Profile, checkData ImageCheckData) []ImageDef {
+func checkImageDate(profile *Profile, checkData ImageCheckData, force bool) []ImageDef {
 	var imageCandidates, images []ImageDef
 
 	// Dual arch profile
@@ -196,7 +196,7 @@ func checkImageDate(profile *Profile, checkData ImageCheckData) []ImageDef {
 
 	for _, i := range imageCandidates {
 		lastUpdate, ok := checkData[i]
-		if !ok || time.Now().After(lastUpdate.Add(profile.UpdateInterval)) || profile.MinimumDate.After(lastUpdate) {
+		if !ok || force || time.Now().After(lastUpdate.Add(profile.UpdateInterval)) || profile.MinimumDate.After(lastUpdate) {
 			images = append(images, i)
 		}
 	}

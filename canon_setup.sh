@@ -43,10 +43,10 @@ if getent passwd $CANON_UID >/dev/null; then
   fi
 fi
 
-echo "# Fixing ownership on files in $CANON_HOME"
+echo "# Fixing ownership on files in /home/$CANON_USER"
 echo "# This may take a while depending on the number of files."
 (set -x; mkdir -p "/home/$CANON_USER")
-(set -x; chown -Rf $CANON_UID:$CANON_GID "/home/$CANNON_USER")
+(set -x; chown -Rf $CANON_UID:$CANON_GID "/home/$CANON_USER")
 
 # group setup
 if getent group $CANON_GROUP >/dev/null; then

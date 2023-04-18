@@ -184,3 +184,8 @@ files that belong to that user. If you have an image that contains of lot of dat
 
 The workaround for this is to enable persistent profiles, so that only the first startup of a container has this delay. Subsequent calls
 into the container will be nearly instant afterwards.
+
+## Permission issues when extracting files/packages (MacOS only)
+
+There's a bug in Docker for MacOS, and you need to change the settings to use "gRPC FUSE" for file sharing, instead of VirtioFS.
+See https://github.com/docker/for-mac/issues/6614 for details.

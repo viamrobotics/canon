@@ -28,7 +28,7 @@ func main() {
 		case "config":
 			showConfig(activeProfile)
 		case "update":
-			checkErr(checkUpdate(activeProfile, checkAll(args)))
+			checkErr(checkUpdate(activeProfile, checkAll(args), true))
 		case "terminate":
 			checkErr(terminate(activeProfile, checkAll(args)))
 		case "--":

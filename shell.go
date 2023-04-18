@@ -39,7 +39,7 @@ func shell(args []string) error {
 		}
 	}
 
-	checkErr(checkUpdate(activeProfile, false))
+	checkErr(checkUpdate(activeProfile, false, false))
 
 	var containerID string
 	if activeProfile.Persistent {
