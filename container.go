@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -250,6 +251,31 @@ func terminate(profile *Profile, all bool) error {
 		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, container.StopOptions{}))
 	}
 	return err
+}
+
+func list() error {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return err
+	}
+	f := filters.NewArgs(filters.Arg("label", "com.viam.canon.profile"))
+
+	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
+	if err != nil {
+		return err
+	}
+	if len(containers) == 0 {
+		fmt.Println("No running canon containers found.")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
+	fmt.Fprintln(w, "Profile/Architecture\tImage\tContainerID")
+	fmt.Fprintln(w, "--------------------\t-----\t-----------")
+	for _, c := range containers {
+		fmt.Fprintf(w, "%s\t%s\t%s\n", c.Labels["com.viam.canon.profile"], c.Image, c.ID)
+	}
+	return w.Flush()
 }
 
 func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Profile) (string, error) {

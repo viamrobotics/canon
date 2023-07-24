@@ -133,6 +133,7 @@ func parseConfigs() error {
 		fmt.Fprintf(os.Stderr, "  Directly run a command\n  %s command arg1 ... argN\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  Show current config\n  %s config\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  Update docker images\n  %s update [-a(ll)]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  List active canon-managed container(s)\n  %s list\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  Terminate (stop/close) canon-managed container(s)\n  %s terminate [-a(ll)]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options (defaults shown from current profile):\n")
 		flag.PrintDefaults()
