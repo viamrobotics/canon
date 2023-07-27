@@ -173,6 +173,10 @@ func checkUpdate(curProfile *Profile, all, force bool) error {
 
 	var images []ImageDef
 	for i := range imagesMap {
+		if i.Image != curProfile.Image {
+			fmt.Printf("skipping update: %s|%s\n", i.Image, i.Platform)
+			continue
+		}
 		fmt.Printf("queuing update: %s|%s\n", i.Image, i.Platform)
 		images = append(images, i)
 	}
