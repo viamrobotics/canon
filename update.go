@@ -141,7 +141,9 @@ func checkUpdate(curProfile *Profile, all, force bool) error {
 	}
 	// add current profile's image
 	for _, i := range checkImageDate(curProfile, checkData, force) {
-		imagesMap[i] = true
+		if all || i.Platform == "linux/"+curProfile.Arch {
+			imagesMap[i] = true
+		}
 	}
 
 	if all {
@@ -173,10 +175,6 @@ func checkUpdate(curProfile *Profile, all, force bool) error {
 
 	var images []ImageDef
 	for i := range imagesMap {
-		if i.Image != curProfile.Image {
-			fmt.Printf("skipping update: %s|%s\n", i.Image, i.Platform)
-			continue
-		}
 		fmt.Printf("queuing update: %s|%s\n", i.Image, i.Platform)
 		images = append(images, i)
 	}
@@ -193,7 +191,7 @@ func checkImageDate(profile *Profile, checkData ImageCheckData, force bool) []Im
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageAMD64, Platform: "linux/amd64"})
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARM64, Platform: "linux/arm64"})
 	case profile.Image != "":
-		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image, Platform: profile.Arch})
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image, Platform: "linux/" + profile.Arch})
 	default:
 		return images
 	}
