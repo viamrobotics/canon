@@ -122,12 +122,18 @@ Optionally `-a` can be appended to terminate ALL canon-managed containers.
 ## Emulation
 
 Docker can be used cross-architecture, such as running arm64 images and toolchains on amd64, and vice versa. This is enabled by default
-on the MacOS versions of docker. For Linux, qemu can be installed and configured. Most distros have a package to do this
-(look for qemu-user-static), or you can run the following to try it out as a one-shot:
+on the MacOS versions of docker.
+
+On x86 Linux, Docker [can use binfmt](https://docs.docker.com/build/building/multi-platform/#qemu) to automatically run ARM containers. On Debian and Ubuntu, you can follow [Debian's qemu instructions](https://wiki.debian.org/QemuUserEmulation) to set this up:
+
+```sh
+sudo apt install binfmt-support qemu-user-static
+```
+Or you can run the following to try it out as a one-shot:
 
 `docker run --rm --privileged multiarch/qemu-user-static --reset -p yes`
 
-Note: This will only last until the next reboot of the Linux system. See https://github.com/multiarch/qemu-user-static for more details.
+Note: the one-shot approach will only last until the next reboot of the Linux system. See https://github.com/multiarch/qemu-user-static for more details.
 
 ## Updates
 
