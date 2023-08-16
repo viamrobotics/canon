@@ -126,9 +126,9 @@ on the MacOS versions of docker.
 
 On Debian and Ubuntu, you can follow [Debian's qemu instructions](https://wiki.debian.org/QemuUserEmulation) to set this up:
 
-ticktickticksh
+```sh
 sudo apt install binfmt-support qemu-user-static
-tickticktick
+```
 
 Most other Linux distributions should have a packaged version of [binfmt](https://github.com/tonistiigi/binfmt) and [qemu-user-static](https://github.com/multiarch/qemu-user-static) that you can install to run containers on different architectures ([docker docs](https://docs.docker.com/build/building/multi-platform/#qemu)).
 Or you can run the following to try it out as a one-shot:
