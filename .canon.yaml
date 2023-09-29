@@ -1,3 +1,6 @@
 canon-default:
-    image_amd64: "ghcr.io/viamrobotics/canon:amd64"
-    image_arm64: "ghcr.io/viamrobotics/canon:arm64"
+    image_amd64: "amd64/debian"
+    image_arm64: "arm64v8/debian"
+    image_386: "i386/debian"
+    image_arm: "arm32v7/debian"
+    image_arm_v6: "arm32v5/debian"

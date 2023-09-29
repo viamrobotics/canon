@@ -160,6 +160,9 @@ func checkUpdate(curProfile *Profile, all, force bool) error {
 			// we want defaults but NOT the defaults for images
 			prof.ImageAMD64 = ""
 			prof.ImageARM64 = ""
+			prof.ImageARM = ""
+			prof.ImageARMv6 = ""
+			prof.Image386 = ""
 			prof.Image = ""
 
 			err = mapDecode(iface, prof)
@@ -185,15 +188,24 @@ func checkUpdate(curProfile *Profile, all, force bool) error {
 func checkImageDate(profile *Profile, checkData ImageCheckData, force bool) []ImageDef {
 	var imageCandidates, images []ImageDef
 
-	// Dual arch profile
-	switch {
-	case profile.ImageAMD64 != "" && profile.ImageARM64 != "":
+	// multi arch profiles
+	if profile.ImageAMD64 != "" {
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageAMD64, Platform: "linux/amd64"})
+	}
+	if profile.ImageARM64 != "" {
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARM64, Platform: "linux/arm64"})
-	case profile.Image != "":
+	}
+	if profile.ImageARM != "" {
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARM, Platform: "linux/arm"})
+	}
+	if profile.ImageARMv6 != "" {
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.ImageARMv6, Platform: "linux/arm/v6"})
+	}
+	if profile.Image386 != "" {
+		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image386, Platform: "linux/386"})
+	}
+	if profile.Image != "" {
 		imageCandidates = append(imageCandidates, ImageDef{Image: profile.Image, Platform: "linux/" + profile.Arch})
-	default:
-		return images
 	}
 
 	for _, i := range imageCandidates {

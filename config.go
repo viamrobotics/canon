@@ -22,19 +22,22 @@ import (
 
 type Profile struct {
 	name           string
-	Default        bool          `yaml:"default" mapstructure:"default"`
-	Image          string        `yaml:"image" mapstructure:"image"`
-	ImageAMD64     string        `yaml:"image_amd64" mapstructure:"image_amd64"`
-	ImageARM64     string        `yaml:"image_arm64" mapstructure:"image_arm64"`
-	Arch           string        `yaml:"arch" mapstructure:"arch"`
-	MinimumDate    time.Time     `yaml:"minimum_date" mapstructure:"minimum_date"`
-	UpdateInterval time.Duration `yaml:"update_interval" mapstructure:"update_interval"`
-	Persistent     bool          `yaml:"persistent" mapstructure:"persistent"`
-	SSH            bool          `yaml:"ssh" mapstructure:"ssh"`
-	NetRC          bool          `yaml:"netrc" mapstructure:"netrc"`
-	User           string        `yaml:"user" mapstructure:"user"`
-	Group          string        `yaml:"group" mapstructure:"group"`
-	Path           string        `yaml:"path" mapstructure:"path"`
+	Default        bool          `mapstructure:"default"         yaml:"default"`
+	Image          string        `mapstructure:"image"           yaml:"image"`
+	ImageAMD64     string        `mapstructure:"image_amd64"     yaml:"image_amd64"`
+	Image386       string        `mapstructure:"image_386"       yaml:"image_386"`
+	ImageARM64     string        `mapstructure:"image_arm64"     yaml:"image_arm64"`
+	ImageARM       string        `mapstructure:"image_arm"       yaml:"image_arm"`
+	ImageARMv6     string        `mapstructure:"image_arm_v6"    yaml:"image_arm_v6"`
+	Arch           string        `mapstructure:"arch"            yaml:"arch"`
+	MinimumDate    time.Time     `mapstructure:"minimum_date"    yaml:"minimum_date"`
+	UpdateInterval time.Duration `mapstructure:"update_interval" yaml:"update_interval"`
+	Persistent     bool          `mapstructure:"persistent"      yaml:"persistent"`
+	SSH            bool          `mapstructure:"ssh"             yaml:"ssh"`
+	NetRC          bool          `mapstructure:"netrc"           yaml:"netrc"`
+	User           string        `mapstructure:"user"            yaml:"user"`
+	Group          string        `mapstructure:"group"           yaml:"group"`
+	Path           string        `mapstructure:"path"            yaml:"path"`
 }
 
 var activeProfile = &Profile{}
@@ -142,16 +145,17 @@ func parseConfigs() error {
 	flag.StringVar(&cfgPath, "config", userCfgPath, "config file")
 	flag.StringVar(&profileName, "profile", defProfileName, "profile name")
 	flag.StringVar(&activeProfile.Image, "image", activeProfile.Image, "docker image name")
-	flag.StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (\"amd64\" or \"arm64\")")
+	flag.StringVar(&activeProfile.Arch, "arch", activeProfile.Arch, "architecture (\"amd64\", \"arm64\", \"386\", \"arm\", \"arm/v6\")")
 	flag.StringVar(&activeProfile.User, "user", activeProfile.User, "user to map to inside the canon environment")
 	flag.StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
 	flag.BoolVar(&activeProfile.SSH, "ssh", activeProfile.SSH, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
 	flag.BoolVar(&activeProfile.NetRC, "netrc", activeProfile.NetRC, "mount ~/.netrc (read-only) in the canon environment")
 
 	flag.Parse()
+
 	// swap again in case a CLI arg would change arch
 	swapArchImage(activeProfile)
-	return nil
+	return validateArch(activeProfile.Arch)
 }
 
 func findProjectConfig() (string, error) {
@@ -247,8 +251,11 @@ func mergeProfile(in interface{}, out *Profile) error {
 	if err := mapDecode(in, tempProf); err != nil {
 		return err
 	}
-	if tempProf.ImageAMD64 != "" || tempProf.ImageARM64 != "" {
-		out.Image = ""
+	for _, img := range []string{tempProf.ImageAMD64, tempProf.ImageARM64, tempProf.ImageARM, tempProf.ImageARMv6, tempProf.Image386} {
+		if img != "" {
+			out.Image = ""
+			break
+		}
 	}
 	return mapDecode(in, out)
 }
@@ -380,15 +387,30 @@ func checkAll(args []string) bool {
 
 func swapArchImage(profile *Profile) {
 	// abort if image is overridden and not one of the swapable options
-	if profile.Image != "" && profile.Image != profile.ImageAMD64 && profile.Image != profile.ImageARM64 {
+	var canSwap bool
+	for _, img := range []string{profile.ImageAMD64, profile.ImageARM64, profile.ImageARM, profile.ImageARMv6, profile.Image386} {
+		if profile.Image == "" || img == profile.Image {
+			canSwap = true
+			break
+		}
+	}
+	if !canSwap {
 		return
 	}
 
-	if profile.Arch == "amd64" && profile.ImageAMD64 != "" {
+	switch profile.Arch {
+	case "amd64":
 		profile.Image = profile.ImageAMD64
-	}
-	if profile.Arch == "arm64" && profile.ImageARM64 != "" {
+	case "arm64":
 		profile.Image = profile.ImageARM64
+	case "arm":
+		profile.Image = profile.ImageARM
+	case "arm/v6":
+		profile.Image = profile.ImageARMv6
+	case "386":
+		profile.Image = profile.Image386
+	default:
+		profile.Image = ""
 	}
 }
 
@@ -411,4 +433,53 @@ func mapDecode(iface interface{}, p *Profile) error {
 		return err
 	}
 	return dec.Decode(iface)
+}
+
+func validateArch(arch string) error {
+	switch arch {
+	case "amd64":
+		fallthrough
+	case "arm64":
+		fallthrough
+	case "arm":
+		fallthrough
+	case "arm/v6":
+		fallthrough
+	case "386":
+		return nil
+
+	case "armv7":
+		fallthrough
+	case "armv7l":
+		fallthrough
+	case "armhf":
+		fallthrough
+	case "arm/v7":
+		return errors.New("Invalid architecture: " + arch + "; Use just \"arm\"")
+
+	case "armv6":
+		fallthrough
+	case "armv6l":
+		fallthrough
+	case "armel":
+		return errors.New("Invalid architecture: " + arch + "; Use \"arm/v6\"")
+
+	case "x86_64":
+		return errors.New("Invalid architecture: " + arch + "; Use \"amd64\"")
+
+	case "arm/v8":
+		fallthrough
+	case "aarch64":
+		return errors.New("Invalid architecture: " + arch + "; Use \"arm64\"")
+
+	case "x86":
+		fallthrough
+	case "i386":
+		fallthrough
+	case "i686":
+		return errors.New("Invalid architecture: " + arch + "; Use \"386\"")
+
+	default:
+		return errors.New("Invalid architecture: " + arch)
+	}
 }
