@@ -124,7 +124,7 @@ Run: `canon list` to list all currently running canon containers.
 ### Terminating persistent containers
 
 Run: `canon terminate` to terminate the container that would currently be used (what is shown from `canon config`.)
-Optionally `-a` can be appended to terminate ALL canon-managed containers (everything listed above by `canon list` above.)
+Optionally `-a` can be appended to terminate ALL canon-managed containers (everything shown by `canon list` above.)
 
 ## Emulation
 
