@@ -12,6 +12,7 @@ linters:
     - contextcheck
     - cyclop
     - deadcode
+    - depguard
     - exhaustivestruct
     - exhaustruct
     - forbidigo

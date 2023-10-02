@@ -76,13 +76,16 @@ change based on the current project/directory, as well as with different argumen
 
 Profiles are defined with the following fields:
 
-* `arch` The architecture (only amd64 or arm64 supported currently) to run the image as.
+* `arch` The architecture (`amd64`, `arm64`, `386`, `arm`, or `arm/v6`) to run the image as.
 	- Note the architecture does NOT have to match the host in most cases where emulation is set up. See [Emulation](#emulation) below
 	- Defaults to the detected current architecture.
 * `image` The docker image used by this profile. Can be overriden by `-image`
-	- Note, this should NOT be defined if using the architecture-specific image options below. It will override them both.
-* `image_amd64` The AMD64 specific image to use when that architecture is selected.
-* `image_arm64` The ARM64 specific image to use when that architecture is selected.
+	- Note, this should NOT be defined if using the architecture-specific image options below. It will override them all.
+* `image_amd64` The AMD64 (x86_64) specific image to use when that architecture is selected.
+* `image_arm64` The ARM64 (aarch64) specific image to use when that architecture is selected.
+* `image_386` The 386 (x86) specific image to use when that architecture is selected.
+* `image_arm` The arm (armv7l/armhf) specific image to use when that architecture is selected.
+* `image_arm_v6` The arm/v6 (armv6l) specific image to use when that architecture is selected.
 * `minimum_date` If the created timestamp of the image is older then this, force an update of the image.
 	- This allows project maintainers to automatically notified canon (and canon users) when an update is needed for a project.
 	- Obtain with `docker inspect -f '{{ .Created }}' IMAGE_NAME`
@@ -114,10 +117,14 @@ opened in the same environment, and can make build/download caching inside the c
 can be set with the "persistent" value set to true. In this mode, any canon executions that use that profile will be run in the same
 container. Exiting a shell (or a command ending) will not terminate the container either.
 
+### Listing active containers
+
+Run: `canon list` to list all currently running canon containers.
+
 ### Terminating persistent containers
 
-Run: `canon terminate` to terminate the container that would currently be used.
-Optionally `-a` can be appended to terminate ALL canon-managed containers.
+Run: `canon terminate` to terminate the container that would currently be used (what is shown from `canon config`.)
+Optionally `-a` can be appended to terminate ALL canon-managed containers (everything shown by `canon list` above.)
 
 ## Emulation
 
