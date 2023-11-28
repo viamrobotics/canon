@@ -28,8 +28,8 @@ Requires Go 1.19 or newer to be installed.
 
 `go install github.com/viamrobotics/canon@latest`
 
-Make sure your GOBIN is in your PATH. If not, you can add it with something like:
-`export PATH="$PATH:~/go/bin"`
+Make sure your GOBIN is in your PATH. If not, you can temporarily add it with something like:
+`export PATH="$(go env GOPATH)/bin:$PATH"`
 Note: This path may vary. See https://go.dev/ref/mod#go-install for details.
 
 ## Usage
