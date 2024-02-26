@@ -248,7 +248,11 @@ func terminate(profile *Profile, all bool) error {
 	}
 	for _, c := range containers {
 		fmt.Printf("terminating %s\n", c.Labels["com.viam.canon.profile"])
-		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, container.StopOptions{}))
+		err = multierr.Combine(
+			err,
+			cli.ContainerStop(context.Background(), c.ID, container.StopOptions{}),
+			cli.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{}),
+		)
 	}
 	return err
 }
