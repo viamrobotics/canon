@@ -121,7 +121,14 @@ container. Exiting a shell (or a command ending) will not terminate the containe
 
 Run: `canon list` to list all currently running canon containers.
 
-### Terminating persistent containers
+### Stopping persistent containers
+
+Note: This usually isn't needed. Idle containers use only a small amount of resources, but if you want to reclaim some of it, you can stop them.
+Run: `canon stop` to stop the container that would currently be used (what is shown from `canon config`.)
+Optionally `-a` can be appended to stop ALL canon-managed containers (everything shown by `canon list` above.)
+Persistent containers will be automatically restarted (with their contents intact) when needed again. Ephemeral (one-shot) containers will be automatically removed if stopped however, effectively the same as terminating them.
+
+### Terminating containers
 
 Run: `canon terminate` to terminate the container that would currently be used (what is shown from `canon config`.)
 Optionally `-a` can be appended to terminate ALL canon-managed containers (everything shown by `canon list` above.)

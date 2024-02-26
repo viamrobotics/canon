@@ -16,7 +16,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
@@ -24,7 +23,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"go.uber.org/multierr"
 	"gopkg.in/yaml.v3"
 )
 
@@ -33,27 +31,8 @@ var canonSetupScript string
 
 var canonMountPoint = "/host"
 
-func stopContainer(ctx context.Context, cli *client.Client, containerID string) error {
-	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
-	if err != nil {
-		return err
-	}
-
-	// wait for the container to exit
-	statusCh, errCh := cli.ContainerWait(ctx, containerID, container.WaitConditionRemoved)
-	select {
-	case err := <-errCh:
-		if err != nil {
-			if !strings.Contains(err.Error(), "No such container") {
-				return err
-			}
-		}
-	case status := <-statusCh:
-		if status.Error != nil && status.Error.Message != "" {
-			return fmt.Errorf("error waiting for container stop: %s", status.Error.Message)
-		}
-	}
-	return nil
+func removeContainer(ctx context.Context, cli *client.Client, containerID string) error {
+	return cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 }
 
 func startContainer(ctx context.Context, cli *client.Client, profile *Profile, sshSock string) (string, error) {
@@ -63,7 +42,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		AttachStderr: true,
 	}
 
-	hostCfg := &container.HostConfig{AutoRemove: true}
+	hostCfg := &container.HostConfig{AutoRemove: !profile.Persistent}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
 	if profile.SSH {
@@ -196,13 +175,13 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	fmt.Printf("Started new container: %s\n", name)
 	containerID := resp.ID
 
-	hijack, err := cli.ContainerAttach(ctx, containerID, types.ContainerAttachOptions{Stream: true, Stdout: true, Stderr: true})
+	hijack, err := cli.ContainerAttach(ctx, containerID, container.AttachOptions{Stream: true, Stdout: true, Stderr: true})
 	if err != nil {
 		return "", err
 	}
 	defer hijack.Close()
 
-	err = cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
+	err = cli.ContainerStart(ctx, containerID, container.StartOptions{})
 	if err != nil {
 		return containerID, err
 	}
@@ -228,7 +207,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	return containerID, scanner.Err()
 }
 
-func terminate(profile *Profile, all bool) error {
+func stop(ctx context.Context, profile *Profile, all, terminate bool) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
@@ -239,7 +218,7 @@ func terminate(profile *Profile, all bool) error {
 	} else {
 		f.Add("label", "com.viam.canon.profile="+profile.name+"/"+profile.Arch)
 	}
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
 	if err != nil {
 		return err
 	}
@@ -247,33 +226,47 @@ func terminate(profile *Profile, all bool) error {
 		return errors.New("multiple matching containers found, please retry with '--all' option")
 	}
 	for _, c := range containers {
-		fmt.Printf("terminating %s\n", c.Labels["com.viam.canon.profile"])
-		err = multierr.Combine(err, cli.ContainerStop(context.Background(), c.ID, container.StopOptions{}))
+		if terminate {
+			fmt.Printf("terminating %s\n", c.Labels["com.viam.canon.profile"])
+			err = errors.Join(err, cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}))
+		} else {
+			fmt.Printf("stopping %s\n", c.Labels["com.viam.canon.profile"])
+			err = errors.Join(err, cli.ContainerStop(ctx, c.ID, container.StopOptions{}))
+		}
 	}
 	return err
 }
 
-func list() error {
+func list(ctx context.Context) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
 	f := filters.NewArgs(filters.Arg("label", "com.viam.canon.profile"))
 
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{Filters: f})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
 	if err != nil {
 		return err
 	}
 	if len(containers) == 0 {
-		fmt.Println("No running canon containers found.")
+		fmt.Println("No canon containers found.")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
-	fmt.Fprintln(w, "Profile/Architecture\tImage\tContainerID")
-	fmt.Fprintln(w, "--------------------\t-----\t-----------")
+	fmt.Fprintln(w, "State\tProfile/Arch\tImage\tContainerID")
+	fmt.Fprintln(w, "-----\t------------\t-----\t-----------")
 	for _, c := range containers {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", c.Labels["com.viam.canon.profile"], c.Image, c.ID)
+		state := c.State
+		switch state {
+		case "running":
+			if label, ok := c.Labels["com.viam.canon.type"]; ok && label == "one-shot" {
+				state = "oneshot"
+			}
+		case "exited":
+			state = "stopped"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", state, c.Labels["com.viam.canon.profile"], c.Image, c.ID)
 	}
 	return w.Flush()
 }
@@ -282,12 +275,12 @@ func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Pr
 	f := filters.NewArgs()
 	f.Add("label", "com.viam.canon.type=persistent")
 	f.Add("label", "com.viam.canon.profile="+profile.name+"/"+profile.Arch)
-	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: f})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
 	if err != nil {
 		return "", err
 	}
 	if len(containers) > 1 {
-		return "", fmt.Errorf("more than one container is running for profile %s, please terminate all containers and retry", profile.name)
+		return "", fmt.Errorf("more than one container exists for profile %s, please terminate all containers and retry", profile.name)
 	}
 	if len(containers) < 1 {
 		return "", nil
@@ -310,7 +303,7 @@ func getPersistentContainer(ctx context.Context, cli *client.Client, profile *Pr
 		)
 	}
 
-	return containers[0].ID, nil
+	return containers[0].ID, cli.ContainerStart(ctx, containers[0].ID, container.StartOptions{})
 }
 
 func checkContainerImageVersion(ctx context.Context, cli *client.Client, containerID string) (bool, error) {

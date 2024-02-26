@@ -14,9 +14,9 @@ import (
 	"syscall"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/moby/term"
-	"go.uber.org/multierr"
 )
 
 func shell(args []string) error {
@@ -113,7 +113,7 @@ func shell(args []string) error {
 		return err
 	}
 	defer func() {
-		err = multierr.Combine(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
+		err = errors.Join(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
 	}()
 
 	outErr := make(chan (error))
@@ -153,7 +153,7 @@ func shell(args []string) error {
 	}
 
 	if !activeProfile.Persistent {
-		return stopContainer(ctx, cli, containerID)
+		return removeContainer(ctx, cli, containerID)
 	}
 	return nil
 }
@@ -163,7 +163,7 @@ func resizeTty(ctx context.Context, cli *client.Client, execID string) error {
 	if err != nil {
 		return err
 	}
-	resizeOpts := types.ResizeOptions{
+	resizeOpts := container.ResizeOptions{
 		Height: uint(termSize.Height),
 		Width:  uint(termSize.Width),
 	}

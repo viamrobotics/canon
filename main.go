@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -30,9 +31,11 @@ func main() {
 		case "update":
 			checkErr(checkUpdate(activeProfile, checkAll(args), true))
 		case "list":
-			checkErr(list())
+			checkErr(list(context.Background()))
+		case "stop":
+			checkErr(stop(context.Background(), activeProfile, checkAll(args), false))
 		case "terminate":
-			checkErr(terminate(activeProfile, checkAll(args)))
+			checkErr(stop(context.Background(), activeProfile, checkAll(args), true))
 		case "--":
 			fallthrough
 		case "run":
