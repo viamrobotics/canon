@@ -63,7 +63,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 		AttachStderr: true,
 	}
 
-	hostCfg := &container.HostConfig{AutoRemove: true}
+	hostCfg := &container.HostConfig{AutoRemove: !profile.Persistent}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
 	if profile.SSH {
