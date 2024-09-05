@@ -24,7 +24,7 @@ For Docker install instructions, see https://docs.docker.com/engine/install/
 
 ### Direct Install
 
-Requires Go 1.19 or newer to be installed.
+Requires Go 1.23 or newer to be installed.
 
 `go install github.com/viamrobotics/canon@latest`
 

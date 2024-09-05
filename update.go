@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"gopkg.in/yaml.v3"
@@ -67,7 +67,7 @@ func update(images ...ImageDef) error {
 	}
 
 	for _, i := range images {
-		resp, err := cli.ImagePull(ctx, i.Image, types.ImagePullOptions{Platform: i.Platform})
+		resp, err := cli.ImagePull(ctx, i.Image, image.PullOptions{Platform: i.Platform})
 		if err != nil {
 			return err
 		}

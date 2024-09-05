@@ -13,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/moby/term"
@@ -72,7 +71,7 @@ func shell(args []string) error {
 		return err
 	}
 
-	execCfg := types.ExecConfig{
+	execCfg := container.ExecOptions{
 		User:         fmt.Sprintf("%s:%s", activeProfile.User, activeProfile.Group),
 		WorkingDir:   wd,
 		AttachStdin:  true,
@@ -91,7 +90,7 @@ func shell(args []string) error {
 	}
 	execID := execResp.ID
 
-	hijack, err := cli.ContainerExecAttach(ctx, execID, types.ExecStartCheck{Tty: execCfg.Tty})
+	hijack, err := cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{Tty: execCfg.Tty})
 	if err != nil {
 		return err
 	}
@@ -127,7 +126,7 @@ func shell(args []string) error {
 		inErr <- err
 	}()
 
-	err = cli.ContainerExecStart(ctx, execID, types.ExecStartCheck{})
+	err = cli.ContainerExecStart(ctx, execID, container.ExecStartOptions{})
 	if err != nil {
 		return err
 	}
@@ -188,7 +187,7 @@ func getWorkingDir(profile *Profile) (string, error) {
 		return "", err
 	}
 	if !strings.HasPrefix(cwd, profile.Path) {
-		return "", fmt.Errorf("current directory is not within the current profile's path")
+		return "", errors.New("current directory is not within the current profile's path")
 	}
 	cwd = strings.TrimPrefix(cwd, profile.Path)
 	return filepath.Join(canonMountPoint, cwd), nil
