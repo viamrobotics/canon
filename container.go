@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -146,8 +147,8 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	// fill out the entrypoint template
 	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_USER__", profile.User)
 	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_GROUP__", profile.Group)
-	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_UID__", fmt.Sprint(os.Getuid()))
-	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_GID__", fmt.Sprint(os.Getgid()))
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_UID__", strconv.Itoa(os.Getuid()))
+	canonSetupScript = strings.ReplaceAll(canonSetupScript, "__CANON_GID__", strconv.Itoa(os.Getgid()))
 	cfg.Entrypoint = []string{}
 	cfg.Cmd = []string{"bash", "-c", canonSetupScript}
 
