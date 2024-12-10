@@ -1,9 +1,9 @@
 module github.com/viamrobotics/canon
 
-go 1.23.1
+go 1.23.4
 
 require (
-	github.com/docker/docker v27.2.0+incompatible
+	github.com/docker/docker v27.4.0+incompatible
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/term v0.5.0
 	github.com/opencontainers/image-spec v1.1.0
