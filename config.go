@@ -416,11 +416,11 @@ func swapArchImage(profile *Profile) {
 
 func showConfig(profile *Profile) {
 	ret, err := yaml.Marshal(mergedCfg)
-	checkErr(err)
+	printIfErr(err)
 	fmt.Printf("# All explicitly parsed/merged config files (without builtin/default/cli)\n---\n%s\n\n", ret)
 
 	ret, err = yaml.Marshal(map[string]Profile{profile.name: *profile})
-	checkErr(err)
+	printIfErr(err)
 	fmt.Printf("# Active, merged profile (including builtin/user defaults and cli arguments)\n---\n%s\n", ret)
 }
 

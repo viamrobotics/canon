@@ -193,7 +193,7 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	go func() {
 		_, err := stdcopy.StdCopy(pipeW, pipeW, hijack.Reader)
 		if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-			checkErr(err)
+			printIfErr(err)
 		}
 	}()
 

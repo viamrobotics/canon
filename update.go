@@ -52,7 +52,7 @@ func update(images ...ImageDef) error {
 		return err
 	}
 	defer func() {
-		checkErr(dropLock(lock))
+		printIfErr(dropLock(lock))
 	}()
 
 	checkData, err := readCheckData()

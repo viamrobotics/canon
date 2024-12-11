@@ -18,14 +18,18 @@ import (
 	"github.com/moby/term"
 )
 
-func shell(args []string) error {
+const (
+	ExitCodeOnError = 66
+)
+
+func shell(args []string) (int, error) {
 	if len(args) < 1 {
-		return errors.New("shell needs at least one argument to run")
+		return ExitCodeOnError, errors.New("shell needs at least one argument to run")
 	}
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 
 	var sshSock string
@@ -38,20 +42,20 @@ func shell(args []string) error {
 		}
 	}
 
-	checkErr(checkUpdate(activeProfile, false, false))
+	printIfErr(checkUpdate(activeProfile, false, false))
 
 	var containerID string
 	if activeProfile.Persistent {
 		containerID, err = getPersistentContainer(ctx, cli, activeProfile)
 		if err != nil {
-			return err
+			return ExitCodeOnError, err
 		}
 	}
 
 	if containerID != "" {
 		needsUpdate, err := checkContainerImageVersion(ctx, cli, containerID)
 		if err != nil {
-			return err
+			return ExitCodeOnError, err
 		}
 		if needsUpdate {
 			fmt.Print(
@@ -62,13 +66,13 @@ func shell(args []string) error {
 	} else {
 		containerID, err = startContainer(ctx, cli, activeProfile, sshSock)
 		if err != nil {
-			return err
+			return ExitCodeOnError, err
 		}
 	}
 
 	wd, err := getWorkingDir(activeProfile)
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 
 	execCfg := container.ExecOptions{
@@ -86,13 +90,13 @@ func shell(args []string) error {
 
 	execResp, err := cli.ContainerExecCreate(ctx, containerID, execCfg)
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 	execID := execResp.ID
 
 	hijack, err := cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{Tty: execCfg.Tty})
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 	defer hijack.Close()
 
@@ -102,14 +106,14 @@ func shell(args []string) error {
 		// for very fast commands, the resize may happen too early or too late
 		if !strings.Contains(err.Error(), "cannot resize a stopped container") &&
 			!strings.Contains(err.Error(), "no such exec") {
-			return err
+			return ExitCodeOnError, err
 		}
 	}
 	monitorTtySize(ctx, cli, execID)
 
 	termState, err := term.SetRawTerminal(os.Stdin.Fd())
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 	defer func() {
 		err = errors.Join(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
@@ -128,33 +132,41 @@ func shell(args []string) error {
 
 	err = cli.ContainerExecStart(ctx, execID, container.ExecStartOptions{})
 	if err != nil {
-		return err
+		return ExitCodeOnError, err
 	}
 
 	select {
 	case err := <-outErr:
 		if err != nil {
-			return err
+			return ExitCodeOnError, err
 		}
 		break
 	case err := <-inErr:
 		if err != nil {
-			return err
+			return ExitCodeOnError, err
 		}
 		select {
 		case err := <-outErr:
 			if err != nil {
-				return err
+				return ExitCodeOnError, err
 			}
 		case <-ctx.Done():
-			return ctx.Err()
+			return ExitCodeOnError, ctx.Err()
 		}
 	}
 
-	if !activeProfile.Persistent {
-		return removeContainer(ctx, cli, containerID)
+	details, err := cli.ContainerExecInspect(ctx, execID)
+	if err != nil {
+		return ExitCodeOnError, err
 	}
-	return nil
+
+	if !activeProfile.Persistent {
+		err = removeContainer(ctx, cli, containerID)
+		if err != nil {
+			return ExitCodeOnError, err
+		}
+	}
+	return details.ExitCode, nil
 }
 
 func resizeTty(ctx context.Context, cli *client.Client, execID string) error {

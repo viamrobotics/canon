@@ -39,6 +39,11 @@ Simply run `canon` with no arguments to get a shell inside the default canon env
 Alternately, you can directly specify a command to be run.
 Ex: `canon make tests`
 
+### Exit Codes
+
+The exit code of canon (as of version 1.2.0) will normally reflect the exit code of the internal shell or command that was run.
+However, if an internal or docker error is encountered, the exit code will be 66.
+
 ### Arguments
 
 Run `canon -help` for a brief listing of arguments you can set via CLI.
