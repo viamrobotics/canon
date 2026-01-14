@@ -35,6 +35,7 @@ type Profile struct {
 	Persistent     bool          `mapstructure:"persistent"      yaml:"persistent"`
 	SSH            bool          `mapstructure:"ssh"             yaml:"ssh"`
 	NetRC          bool          `mapstructure:"netrc"           yaml:"netrc"`
+	Network        string        `mapstructure:"network"         yaml:"network"`
 	User           string        `mapstructure:"user"            yaml:"user"`
 	Group          string        `mapstructure:"group"           yaml:"group"`
 	Path           string        `mapstructure:"path"            yaml:"path"`
@@ -150,6 +151,7 @@ func parseConfigs() error {
 	flag.StringVar(&activeProfile.Group, "group", activeProfile.Group, "group to map to inside the canon environment")
 	flag.BoolVar(&activeProfile.SSH, "ssh", activeProfile.SSH, "mount ~/.ssh (read-only) and forward SSH_AUTH_SOCK to the canon environment")
 	flag.BoolVar(&activeProfile.NetRC, "netrc", activeProfile.NetRC, "mount ~/.netrc (read-only) in the canon environment")
+	flag.StringVar(&activeProfile.Network, "network", activeProfile.Network, "network mode for the container (\"bridge\", \"host\", \"none\", or custom network name)")
 
 	flag.Parse()
 

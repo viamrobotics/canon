@@ -44,6 +44,9 @@ func startContainer(ctx context.Context, cli *client.Client, profile *Profile, s
 	}
 
 	hostCfg := &container.HostConfig{AutoRemove: !profile.Persistent}
+	if profile.Network != "" {
+		hostCfg.NetworkMode = container.NetworkMode(profile.Network)
+	}
 	netCfg := &network.NetworkingConfig{}
 	platform := &v1.Platform{OS: "linux", Architecture: profile.Arch}
 	if profile.SSH {
