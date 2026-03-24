@@ -15,6 +15,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/term"
 )
 
@@ -75,13 +76,15 @@ func shell(args []string) (int, error) {
 		return ExitCodeOnError, err
 	}
 
+	isTTY := term.IsTerminal(os.Stdin.Fd())
+
 	execCfg := container.ExecOptions{
 		User:         fmt.Sprintf("%s:%s", activeProfile.User, activeProfile.Group),
 		WorkingDir:   wd,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          true,
+		Tty:          isTTY,
 		Cmd:          args,
 	}
 	if sshSock != "" {
@@ -100,31 +103,41 @@ func shell(args []string) (int, error) {
 	}
 	defer hijack.Close()
 
-	// keep the TTY the same size in the container as on the host
-	err = resizeTty(ctx, cli, execID)
-	if err != nil {
-		// for very fast commands, the resize may happen too early or too late
-		if !strings.Contains(err.Error(), "cannot resize a stopped container") &&
-			!strings.Contains(err.Error(), "no such exec") {
+	if isTTY {
+		// keep the TTY the same size in the container as on the host
+		err = resizeTty(ctx, cli, execID)
+		if err != nil {
+			// for very fast commands, the resize may happen too early or too late
+			if !strings.Contains(err.Error(), "cannot resize a stopped container") &&
+				!strings.Contains(err.Error(), "no such exec") {
+				return ExitCodeOnError, err
+			}
+		}
+		monitorTtySize(ctx, cli, execID)
+
+		var termState *term.State
+		termState, err = term.SetRawTerminal(os.Stdin.Fd())
+		if err != nil {
 			return ExitCodeOnError, err
 		}
+		defer func() {
+			err = errors.Join(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
+		}()
 	}
-	monitorTtySize(ctx, cli, execID)
-
-	termState, err := term.SetRawTerminal(os.Stdin.Fd())
-	if err != nil {
-		return ExitCodeOnError, err
-	}
-	defer func() {
-		err = errors.Join(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
-	}()
 
 	outErr := make(chan (error))
 	inErr := make(chan (error))
-	go func() {
-		_, err := io.Copy(os.Stdout, hijack.Reader)
-		outErr <- err
-	}()
+	if isTTY {
+		go func() {
+			_, err := io.Copy(os.Stdout, hijack.Reader)
+			outErr <- err
+		}()
+	} else {
+		go func() {
+			_, err := stdcopy.StdCopy(os.Stdout, os.Stderr, hijack.Reader)
+			outErr <- err
+		}()
+	}
 	go func() {
 		_, err := io.Copy(hijack.Conn, os.Stdin)
 		inErr <- err
