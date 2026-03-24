@@ -133,6 +133,8 @@ func shell(args []string) (int, error) {
 			outErr <- err
 		}()
 	} else {
+		// Without TTY, Docker multiplexes stdout/stderr with headers.
+		// StdCopy demuxes them back to separate streams.
 		go func() {
 			_, err := stdcopy.StdCopy(os.Stdout, os.Stderr, hijack.Reader)
 			outErr <- err
