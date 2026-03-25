@@ -121,7 +121,9 @@ func shell(args []string) (int, error) {
 			return ExitCodeOnError, err
 		}
 		defer func() {
-			err = errors.Join(err, term.RestoreTerminal(os.Stdin.Fd(), termState))
+			if restoreErr := term.RestoreTerminal(os.Stdin.Fd(), termState); restoreErr != nil {
+				err = errors.Join(err, restoreErr)
+			}
 		}()
 	}
 
