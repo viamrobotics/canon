@@ -47,8 +47,8 @@ echo "# Fixing ownership on files in /home/$CANON_USER"
 echo "# This may take a while depending on the number of files."
 (set -x; mkdir -p "/home/$CANON_USER")
 # find files with wrong ownership, chown in parallel batches across all cores
-find "/home/$CANON_USER" \( ! -user $CANON_UID -o ! -group $CANON_GID \) -print0 | \
-  xargs -0 -r -P "$(nproc)" -n 100 chown -f $CANON_UID:$CANON_GID
+(set -x; find "/home/$CANON_USER" \( ! -user $CANON_UID -o ! -group $CANON_GID \) -print0 | \
+  xargs -0 -r -P "$(nproc)" -n 100 chown -f $CANON_UID:$CANON_GID)
 
 # group setup
 if getent group $CANON_GROUP >/dev/null; then
