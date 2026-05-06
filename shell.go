@@ -78,17 +78,24 @@ func shell(args []string) (int, error) {
 
 	isTTY := term.IsTerminal(os.Stdin.Fd())
 
+	home := "/root"
+	if activeProfile.User != "root" {
+		home = "/home/" + activeProfile.User
+	}
+	env := []string{"HOME=" + home}
+	if sshSock != "" {
+		env = append(env, "SSH_AUTH_SOCK="+sshSock)
+	}
+
 	execCfg := container.ExecOptions{
 		User:         fmt.Sprintf("%s:%s", activeProfile.User, activeProfile.Group),
 		WorkingDir:   wd,
+		Env:          env,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 		Tty:          isTTY,
 		Cmd:          args,
-	}
-	if sshSock != "" {
-		execCfg.Env = []string{"SSH_AUTH_SOCK=" + sshSock}
 	}
 
 	execResp, err := cli.ContainerExecCreate(ctx, containerID, execCfg)
